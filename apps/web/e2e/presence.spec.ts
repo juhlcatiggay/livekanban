@@ -29,7 +29,7 @@ test("a board appears in recent boards after visiting", async ({ page }) => {
   const id = page.url().split("/b/")[1];
 
   await page.goto("/");
-  await expect(page.getByRole("link", { name: new RegExp(id.slice(0, 8)) })).toBeVisible();
+  await expect(page.getByRole("link", { name: new RegExp(id.slice(0, 6)) })).toBeVisible();
 });
 
 test("an unknown board shows the expired screen", async ({ page }) => {

@@ -34,7 +34,7 @@ jobs:
       - name: Build web
         run: pnpm build
         env:
-          NEXT_PUBLIC_PARTY_HOST: localhost:8787
+          NEXT_PUBLIC_PARTY_HOST: localhost:8797 # must match playwright.config.ts
       - name: Install Playwright browser
         run: pnpm --filter web exec playwright install --with-deps chromium
       - name: End-to-end tests
