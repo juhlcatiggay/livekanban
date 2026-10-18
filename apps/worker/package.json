@@ -1,0 +1,22 @@
+{
+  "name": "worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typegen": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@livekanban/protocol": "workspace:*",
+    "nanoid": "^6.0.2",
+    "partyserver": "^0.5.10"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "^4.151.1"
+  }
+}

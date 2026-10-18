@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "livekanban",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [{ "name": "BoardRoom", "class_name": "BoardRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BoardRoom"] }],
+  // Fixed so the web app's NEXT_PUBLIC_PARTY_HOST (localhost:8787) always matches.
+  "dev": { "port": 8787 },
+  "vars": {
+    // Comma-separated origins allowed to create boards and open sockets.
+    "ALLOWED_ORIGINS": "http://localhost:3000",
+    // Inactivity window before a board is deleted; shortened in staging to test expiry.
+    "EXPIRY_DAYS": "60"
+  }
+}
