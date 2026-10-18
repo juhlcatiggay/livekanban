@@ -1,0 +1,46 @@
+import { expect, test } from "@playwright/test";
+
+// Phase 1 exit gate: two tabs share one room.
+test("two visitors on one board see each other join and leave", async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  await alice.goto("/");
+  await alice.getByRole("button", { name: "Create board" }).click();
+  await alice.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
+  await expect(alice.getByText("Live", { exact: true })).toBeVisible();
+  await expect(alice.getByText(/^Kept until \d{1,2} \w{3} \d{4}$/)).toBeVisible();
+  await expect(alice.getByLabel("1 people on this board")).toBeVisible();
+
+  // A separate context has its own localStorage, so it gets its own identity.
+  const bobContext = await browser.newContext();
+  const bob = await bobContext.newPage();
+  await bob.goto(alice.url());
+  await expect(bob.getByLabel("2 people on this board")).toBeVisible();
+  await expect(alice.getByLabel("2 people on this board")).toBeVisible();
+
+  await bobContext.close();
+  await expect(alice.getByLabel("1 people on this board")).toBeVisible();
+});
+
+test("a board appears in recent boards after visiting", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create board" }).click();
+  await page.waitForURL(/\/b\//);
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  const id = page.url().split("/b/")[1];
+
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: new RegExp(id.slice(0, 8)) })).toBeVisible();
+});
+
+test("an unknown board shows the expired screen", async ({ page }) => {
+  await page.goto(`/b/${"Z".repeat(21)}`);
+  await expect(page.getByRole("heading", { name: "This board expired" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create a new board" })).toBeVisible();
+});
+
+// The id check runs inside the streamed Suspense boundary, so the status stays 200
+// (Next adds noindex); a true 404 would need a Proxy on every board request.
+test("a malformed board id shows the not-found screen", async ({ page }) => {
+  await page.goto("/b/not-a-board");
+  await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
+});
