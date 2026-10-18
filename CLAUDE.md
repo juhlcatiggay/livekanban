@@ -140,13 +140,13 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 | Type | Direction | Stream | Payload | Rate |
 | --- | --- | --- | --- | --- |
 | `hello` | client → room | presence | name, color, last seq | on connect |
-| `snapshot` | room → client | ops | full board state + presence list | on connect / resync |
+| `welcome` | room → client | both | presence list + `sync`: full snapshot, or a replay of missed ops when the log still covers `lastSeq` | on connect / resync |
 | `cursor` | both | presence | anchor, fx, fy, held card ID | ≤ 30/s per person |
 | `editing` | both | presence | target ID or null | on focus/blur |
 | `lock` / `unlock` | both | presence | card ID, owner | on drag start/end |
 | `op` | client → room | ops | client op ID, kind, data | on each change |
-| `ack` / `reject` | room → client | ops | client op ID, seq | per op |
-| `opBroadcast` | room → others | ops | seq, op | per committed op |
+| `ack` / `reject` | room → client | ops | client op ID + canonical committed op (positions may be adjusted), or a reason | per op |
+| `opb` | room → others | ops | seq, op, actor, time | per committed op |
 | `leave` | room → client | presence | connection ID | on disconnect |
 
 ## Data model
@@ -182,7 +182,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 **Abuse and limits**
 
 - Turnstile challenge on "Create board" and a per-IP creation limit (e.g. 20 boards/hour) in the Worker.
-- Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 4 KB max message; exceeding them drops messages, repeated abuse closes the socket.
+- Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 12,000-character max message (a 4 KB cap could not carry a 10,000-character description); exceeding them drops messages, repeated abuse closes the socket.
 - The per-board size and connection caps from the Data model section.
 - Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links).
 - Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep daily snapshots of the ops log for 7 days.
