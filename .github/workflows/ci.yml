@@ -28,6 +28,8 @@ jobs:
         run: pnpm lint
       - name: Worker smoke test
         run: pnpm --filter worker test
+      - name: Cursor relay latency (local Worker)
+        run: pnpm --filter worker latency
       - name: Worker bundle (dry run)
         run: pnpm --filter worker exec wrangler deploy --dry-run --outdir dist
 

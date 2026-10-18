@@ -29,5 +29,7 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` to point the app at a diff
 pnpm typecheck
 pnpm lint
 pnpm test               # Worker smoke test (boots the Worker locally)
+pnpm --filter worker latency                       # cursor relay p50/p95 against a local Worker
+pnpm --filter worker latency --host <worker>       # ...or against a deployed one (fails if p95 > 100 ms)
 pnpm --filter web e2e   # Playwright, two browser contexts on one board
 ```

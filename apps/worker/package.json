@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "typegen": "wrangler types",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/smoke.mjs"
+    "test": "node scripts/smoke.mjs",
+    "latency": "node scripts/latency.mjs"
   },
   "dependencies": {
     "@livekanban/protocol": "workspace:*",
