@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,7 +11,11 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@livekanban/protocol": "workspace:*",
+    "nanoid": "6.0.2",
     "next": "16.4.2",
     "partysocket": "^1.3.0",
     "react": "19.3.0",

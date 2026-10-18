@@ -6,9 +6,13 @@ import type { Peer } from "@livekanban/protocol";
 import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store";
 import { getIdentity } from "@/lib/identity";
 import { CreateBoardButton } from "../../create-board-button";
+import { InlineEdit } from "./kanban/inline-edit";
+import { KanbanBoard } from "./kanban/kanban-board";
 
 export function Board({ boardId }: { boardId: string }) {
   const status = useBoard((s) => s.status);
+  const board = useBoard((s) => s.board);
+  const dispatch = useBoard((s) => s.dispatch);
 
   useEffect(() => connectBoard(boardId, getIdentity()), [boardId]);
 
@@ -18,23 +22,56 @@ export function Board({ boardId }: { boardId: string }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex h-dvh flex-col">
       <header className="flex items-center justify-between gap-4 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
-        <Link href="/" className="font-semibold">
-          LiveKanban
-        </Link>
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="shrink-0 font-semibold">
+            LiveKanban
+          </Link>
+          <span className="text-stone-300 dark:text-stone-700">/</span>
+          {board && (
+            <InlineEdit
+              value={board.title}
+              label="board title"
+              className="text-base font-medium"
+              onCommit={(title) => dispatch({ kind: "board.update", title })}
+            />
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <PresenceBar />
           <CopyLinkButton />
         </div>
       </header>
-      <main className="flex flex-1 items-center justify-center p-8 text-stone-500">
-        <p>Columns and cards arrive in phase 2.</p>
+      <main className="flex min-h-0 flex-1 flex-col">
+        {board ? <KanbanBoard board={board} /> : <p className="m-auto text-stone-500">Loading board…</p>}
       </main>
+      <ErrorToast />
       <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
         <KeptUntil />
         <ConnectionInfo status={status} />
       </footer>
+    </div>
+  );
+}
+
+function ErrorToast() {
+  const error = useBoard((s) => s.error);
+  const clearError = useBoard((s) => s.clearError);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(clearError, 5000);
+    return () => clearTimeout(t);
+  }, [error, clearError]);
+
+  if (!error) return null;
+  return (
+    <div role="alert" className="fixed right-4 top-16 z-40 flex items-center gap-3 rounded-lg bg-red-600 px-4 py-2.5 text-sm text-white shadow-lg">
+      <span>Change not saved: {error}</span>
+      <button type="button" onClick={clearError} aria-label="Dismiss" className="text-lg leading-none">
+        ×
+      </button>
     </div>
   );
 }

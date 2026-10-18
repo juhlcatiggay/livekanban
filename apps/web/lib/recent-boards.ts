@@ -4,6 +4,7 @@ const EVENT = "lk:recent-change";
 
 export interface RecentBoard {
   id: string;
+  title?: string;
   visitedAt: number;
 }
 
@@ -33,9 +34,9 @@ function write(list: RecentBoard[]) {
   }
 }
 
-export function rememberBoard(id: string) {
+export function rememberBoard(id: string, title?: string) {
   const rest = parseRecent(readRecentRaw()).filter((b) => b.id !== id);
-  write([{ id, visitedAt: Date.now() }, ...rest]);
+  write([{ id, title, visitedAt: Date.now() }, ...rest]);
 }
 
 export function forgetBoard(id: string) {
