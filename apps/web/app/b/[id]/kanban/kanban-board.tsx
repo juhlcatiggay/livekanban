@@ -28,11 +28,12 @@ import {
   type Card,
   type Column,
   type Op,
+  type Peer,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { CardFace } from "./card";
 import { CardDialog } from "./card-dialog";
-import { ColumnPreview, SortableColumn, columnDragId } from "./column";
+import { ColumnPreview, SortableColumn, columnDragId, type PresenceIndex } from "./column";
 
 const isColumnDragId = (id: UniqueIdentifier) => String(id).startsWith("col:");
 const columnIdOf = (dragId: UniqueIdentifier) => String(dragId).slice(4);
@@ -76,8 +77,21 @@ interface UndoState {
   restore: Op;
 }
 
+function indexPresence(peers: Record<string, Peer>): PresenceIndex {
+  const index: PresenceIndex = { heldBy: {}, editors: {} };
+  for (const p of Object.values(peers)) {
+    if (p.holding) index.heldBy[p.holding] = p;
+    if (p.editing) (index.editors[p.editing] ??= []).push(p);
+  }
+  return index;
+}
+
 export function KanbanBoard({ board }: { board: BoardData }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const lockCard = useBoard((s) => s.lockCard);
+  const unlockCard = useBoard((s) => s.unlockCard);
+  const peers = useBoard((s) => s.peers);
+  const presence = useMemo(() => indexPresence(peers), [peers]);
   const columns = useMemo(() => sortedColumns(board), [board]);
   const cardsIn = useMemo(() => cardsByColumn(board), [board]);
   const baseOrder = useMemo<Order>(
@@ -201,8 +215,13 @@ export function KanbanBoard({ board }: { board: BoardData }) {
 
   const onDragStart = ({ active }: DragStartEvent) => {
     setActiveId(active.id);
-    if (isColumnDragId(active.id)) setColumnOrder(columns.map((c) => c.id));
-    else setDragOrder(baseOrder);
+    if (isColumnDragId(active.id)) {
+      setColumnOrder(columns.map((c) => c.id));
+    } else {
+      setDragOrder(baseOrder);
+      // Others see the card lift and follow our cursor; the room refuses a second holder.
+      lockCard(String(active.id));
+    }
   };
 
   // Moving a card into another column happens live during the drag, so the list makes room for it.
@@ -241,16 +260,21 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     }
 
     const card = board.cards[String(active.id)];
-    if (!card || !finalOrder) return;
+    // The room only auto-releases on a committed move, so always release explicitly too.
+    const release = () => unlockCard(String(active.id));
+    // Someone else picked it up first: drop nothing.
+    if (!card || !finalOrder || useBoard.getState().lockDenied === card.id) return release();
     const columnId = findColumn(finalOrder, active.id);
-    if (!columnId) return;
+    if (!columnId) return release();
     let ids = finalOrder[columnId];
     if (over && !isColumnDragId(over.id) && findColumn(finalOrder, over.id) === columnId) {
       ids = arrayMove(ids, ids.indexOf(card.id), ids.indexOf(String(over.id)));
     }
     const { before, after } = neighbours(ids, ids.indexOf(card.id), (id) => board.cards[id]?.position);
-    if (columnId === card.columnId && fitsBetween(card.position, before, after)) return;
-    dispatch({ kind: "card.move", id: card.id, columnId, position: positionBetween(before, after) });
+    if (!(columnId === card.columnId && fitsBetween(card.position, before, after))) {
+      dispatch({ kind: "card.move", id: card.id, columnId, position: positionBetween(before, after) });
+    }
+    release();
   };
 
   const shownColumns = columnOrder ? columnOrder.map((id) => board.columns[id]).filter(Boolean) : columns;
@@ -266,7 +290,8 @@ export function KanbanBoard({ board }: { board: BoardData }) {
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
-        onDragCancel={() => {
+        onDragCancel={({ active }) => {
+          if (!isColumnDragId(active.id)) unlockCard(String(active.id));
           setActiveId(null);
           setDragOrder(null);
           setColumnOrder(null);
@@ -279,6 +304,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
                 key={column.id}
                 column={column}
                 cards={(order[column.id] ?? []).map((id) => board.cards[id]).filter(Boolean)}
+                presence={presence}
                 onOpenCard={setOpenCardId}
                 onDelete={deleteColumn}
               />
@@ -286,7 +312,8 @@ export function KanbanBoard({ board }: { board: BoardData }) {
           </SortableContext>
           <AddColumn lastPosition={columns.at(-1)?.position ?? null} full={columns.length >= LIMITS.columns} />
         </div>
-        <DragOverlay>
+        {/* pointer-events-none so the cursor sender sees the card or column under the overlay. */}
+        <DragOverlay className="pointer-events-none">
           {activeCard && <CardFace card={activeCard} lifted />}
           {activeColumn && <ColumnPreview column={activeColumn} count={cardsIn[activeColumn.id]?.length ?? 0} />}
         </DragOverlay>

@@ -9,10 +9,12 @@ interface InlineEditProps {
   /** Accessible name for the field, e.g. "column title". */
   label: string;
   className?: string;
+  /** Called with true when the input opens and false when it closes. */
+  onEditingChange?: (editing: boolean) => void;
 }
 
 /** Text that turns into an input on click; Enter or blur saves, Escape cancels. */
-export function InlineEdit({ value, onCommit, label, className = "" }: InlineEditProps) {
+export function InlineEdit({ value, onCommit, label, className = "", onEditingChange }: InlineEditProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const done = useRef(false);
@@ -25,6 +27,7 @@ export function InlineEdit({ value, onCommit, label, className = "" }: InlineEdi
           setDraft(value);
           done.current = false;
           setEditing(true);
+          onEditingChange?.(true);
         }}
         className={`min-w-0 truncate rounded px-1 text-left hover:bg-stone-200/60 dark:hover:bg-stone-800 ${className}`}
         aria-label={`Rename ${label}: ${value}`}
@@ -38,6 +41,7 @@ export function InlineEdit({ value, onCommit, label, className = "" }: InlineEdi
     if (done.current) return;
     done.current = true;
     setEditing(false);
+    onEditingChange?.(false);
     const next = draft.trim();
     if (save && next && next !== value) onCommit(next);
   };

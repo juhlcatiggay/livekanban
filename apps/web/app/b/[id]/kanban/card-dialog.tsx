@@ -50,23 +50,42 @@ interface CardDialogProps {
   onDelete: (card: Card) => void;
 }
 
+interface Drafts {
+  title?: string;
+  description?: string;
+  labels?: string;
+  assignee?: string;
+  dueDate?: string;
+}
+
 /**
- * Drafts are local while the dialog is open, so someone else's edit to the
- * same field doesn't yank text out from under you (live typing comes in phase 3).
+ * A field shows the live card value until you type in it; from then on it
+ * shows your draft, so someone else's edit never yanks text out from under
+ * you. Fields you haven't touched update live as others type (every 300 ms).
  */
 export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const { queue, flush } = usePatchSender(card.id);
-  const [title, setTitle] = useState(card.title);
-  const [description, setDescription] = useState(card.description);
-  const [labels, setLabels] = useState(card.labels.join(", "));
-  const [assignee, setAssignee] = useState(card.assignee);
-  const [dueDate, setDueDate] = useState(card.dueDate ?? "");
+  const setPresence = useBoard((s) => s.setPresence);
+  const editors = Object.values(useBoard((s) => s.peers)).filter((p) => p.editing === card.id);
+  const [drafts, setDrafts] = useState<Drafts>({});
+  const draft = <K extends keyof Drafts>(key: K, value: Drafts[K]) => setDrafts((d) => ({ ...d, [key]: value }));
+  const title = drafts.title ?? card.title;
+  const description = drafts.description ?? card.description;
+  const labels = drafts.labels ?? card.labels.join(", ");
+  const assignee = drafts.assignee ?? card.assignee;
+  const dueDate = drafts.dueDate ?? card.dueDate ?? "";
 
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
+
+  // Others see "<you> is editing" on this card while the dialog is open.
+  useEffect(() => {
+    setPresence({ editing: card.id });
+    return () => setPresence({ editing: null });
+  }, [card.id, setPresence]);
 
   const close = () => {
     flush();
@@ -90,7 +109,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
             value={title}
             maxLength={LIMITS.title}
             onChange={(e) => {
-              setTitle(e.target.value);
+              draft("title", e.target.value);
               if (e.target.value.trim()) queue({ title: e.target.value });
             }}
             className="w-full rounded-md bg-transparent px-1 text-lg font-semibold outline-none focus:ring-2 focus:ring-teal-500"
@@ -99,7 +118,14 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
             ×
           </button>
         </div>
-        <p className="-mt-3 px-1 text-xs text-stone-500">in {columnTitle}</p>
+        <p className="-mt-3 px-1 text-xs text-stone-500">
+          in {columnTitle}
+          {editors.length > 0 && (
+            <span className="ml-2 font-medium" style={{ color: editors[0].color }}>
+              · {editors.map((p) => p.name).join(", ")} {editors.length > 1 ? "are" : "is"} also editing
+            </span>
+          )}
+        </p>
 
         <label className="flex flex-col gap-1 text-sm font-medium">
           Description
@@ -109,7 +135,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
             maxLength={LIMITS.description}
             placeholder="Add details (Markdown)"
             onChange={(e) => {
-              setDescription(e.target.value);
+              draft("description", e.target.value);
               queue({ description: e.target.value });
             }}
             className={`${field} font-normal`}
@@ -124,7 +150,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
               maxLength={LIMITS.assignee}
               placeholder="Name"
               onChange={(e) => {
-                setAssignee(e.target.value);
+                draft("assignee", e.target.value);
                 queue({ assignee: e.target.value });
               }}
               className={`${field} font-normal`}
@@ -136,7 +162,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
               type="date"
               value={dueDate}
               onChange={(e) => {
-                setDueDate(e.target.value);
+                draft("dueDate", e.target.value);
                 queue({ dueDate: e.target.value || null });
               }}
               className={`${field} font-normal`}
@@ -150,7 +176,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
             value={labels}
             placeholder="Comma separated, e.g. bug, design"
             onChange={(e) => {
-              setLabels(e.target.value);
+              draft("labels", e.target.value);
               queue({ labels: parseLabels(e.target.value) });
             }}
             className={`${field} font-normal`}

@@ -3,21 +3,28 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LIMITS, positionBetween, type Card, type Column } from "@livekanban/protocol";
+import { LIMITS, positionBetween, type Card, type Column, type Peer } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { InlineEdit } from "./inline-edit";
-import { SortableCard } from "./card";
+import { EditingBadge, SortableCard } from "./card";
 
 export const columnDragId = (id: string) => `col:${id}`;
+
+/** Other people's presence, keyed by the card or column id it concerns. */
+export interface PresenceIndex {
+  heldBy: Record<string, Peer>;
+  editors: Record<string, Peer[]>;
+}
 
 interface ColumnProps {
   column: Column;
   cards: Card[];
+  presence: PresenceIndex;
   onOpenCard: (id: string) => void;
   onDelete: (column: Column) => void;
 }
 
-export function SortableColumn({ column, cards, onOpenCard, onDelete }: ColumnProps) {
+export function SortableColumn({ column, cards, presence, onOpenCard, onDelete }: ColumnProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: columnDragId(column.id),
     data: { type: "column" },
@@ -36,6 +43,7 @@ export function SortableColumn({ column, cards, onOpenCard, onDelete }: ColumnPr
       <ColumnHeader
         column={column}
         count={cards.length}
+        editors={presence.editors[column.id] ?? []}
         onDelete={() => onDelete(column)}
         handle={
           <button
@@ -54,7 +62,13 @@ export function SortableColumn({ column, cards, onOpenCard, onDelete }: ColumnPr
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
           {cards.map((card) => (
-            <SortableCard key={card.id} card={card} onOpen={() => onOpenCard(card.id)} />
+            <SortableCard
+              key={card.id}
+              card={card}
+              onOpen={() => onOpenCard(card.id)}
+              heldBy={presence.heldBy[card.id]}
+              editors={presence.editors[card.id]}
+            />
           ))}
         </ul>
       </SortableContext>
@@ -77,25 +91,33 @@ export function ColumnPreview({ column, count }: { column: Column; count: number
 function ColumnHeader({
   column,
   count,
+  editors,
   onDelete,
   handle,
 }: {
   column: Column;
   count: number;
+  editors: Peer[];
   onDelete: () => void;
   handle: React.ReactNode;
 }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const setPresence = useBoard((s) => s.setPresence);
   const over = column.wipLimit !== null && count > column.wipLimit;
 
   return (
-    <header className="flex items-center gap-1 px-2 py-2">
+    <header
+      className="relative flex items-center gap-1 rounded-t-xl px-2 py-2"
+      style={editors[0] ? { boxShadow: `inset 0 0 0 2px ${editors[0].color}` } : undefined}
+    >
+      {editors.length > 0 && <EditingBadge peers={editors} className="-top-2.5 left-8" />}
       {handle}
       <InlineEdit
         value={column.title}
         label="column title"
         className="flex-1 text-sm font-semibold"
         onCommit={(title) => dispatch({ kind: "column.update", id: column.id, patch: { title } })}
+        onEditingChange={(editing) => setPresence({ editing: editing ? column.id : null })}
       />
       <span
         className={`rounded px-1.5 text-xs tabular-nums ${over ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300" : "text-stone-500"}`}

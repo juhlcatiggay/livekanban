@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Card } from "@livekanban/protocol";
+import type { Card, Peer } from "@livekanban/protocol";
 import { COLOR_STYLES } from "./colors";
 
 const dueFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -42,12 +42,37 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
   );
 }
 
-export function SortableCard({ card, onOpen }: { card: Card; onOpen: () => void }) {
+interface SortableCardProps {
+  card: Card;
+  onOpen: () => void;
+  /** Someone else is dragging this card: show where it was and don't allow pickup. */
+  heldBy?: Peer;
+  /** Others editing this card. */
+  editors?: Peer[];
+}
+
+export function SortableCard({ card, onOpen, heldBy, editors = [] }: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: "card" },
+    disabled: !!heldBy,
   });
 
+  if (heldBy) {
+    return (
+      <li
+        ref={setNodeRef}
+        data-anchor={card.id}
+        className="flex min-h-16 items-center justify-center rounded-lg border-2 border-dashed p-3 text-xs font-medium"
+        style={{ borderColor: heldBy.color, color: heldBy.color }}
+        aria-label={`${card.title}, held by ${heldBy.name}`}
+      >
+        {heldBy.name} is moving “{card.title}”
+      </li>
+    );
+  }
+
+  const editor = editors[0];
   return (
     <li
       ref={setNodeRef}
@@ -66,7 +91,24 @@ export function SortableCard({ card, onOpen }: { card: Card; onOpen: () => void 
         if (e.key === "Enter" && !e.defaultPrevented) onOpen();
       }}
     >
-      <CardFace card={card} />
+      <div className="relative rounded-lg" style={editor ? { boxShadow: `0 0 0 2px ${editor.color}` } : undefined}>
+        <CardFace card={card} />
+        {editor && <EditingBadge peers={editors} />}
+      </div>
     </li>
+  );
+}
+
+/** "Teal Otter is editing" tag in the first editor's color. */
+export function EditingBadge({ peers, className = "-top-2.5 right-2" }: { peers: Peer[]; className?: string }) {
+  const [first] = peers;
+  const label = peers.length > 1 ? `${first.name} +${peers.length - 1} editing` : `${first.name} is editing`;
+  return (
+    <span
+      className={`pointer-events-none absolute z-10 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium text-white shadow ${className}`}
+      style={{ backgroundColor: first.color }}
+    >
+      {label}
+    </span>
   );
 }
