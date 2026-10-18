@@ -22,7 +22,9 @@ export function RecentBoards() {
               href={`/b/${b.id}`}
               className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-stone-100 dark:hover:bg-stone-900"
             >
-              <span className="font-mono">{b.id.slice(0, 8)}…</span>
+              <span className="truncate">
+                {b.title ?? "Untitled board"} <span className="font-mono text-xs text-stone-400">{b.id.slice(0, 6)}</span>
+              </span>
               <span className="text-stone-500">{new Date(b.visitedAt).toLocaleDateString()}</span>
             </Link>
           </li>
