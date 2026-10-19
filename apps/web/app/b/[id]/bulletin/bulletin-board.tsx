@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CANVAS, LIMITS, NOTE_SIZE, cardsByColumn, sortedColumns, type BoardData, type Note } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { confirmAction } from "@/lib/confirm";
 import { indexPresence } from "@/lib/presence-index";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
@@ -51,7 +52,13 @@ export function BulletinBoard({ board }: { board: BoardData }) {
     createNote(spot.x, spot.y);
   };
 
-  const deleteNote = (note: Note) => {
+  const deleteNote = async (note: Note) => {
+    const ok = await confirmAction({
+      title: "Delete this note?",
+      body: "You can restore it from the Trash for 7 days.",
+      confirmLabel: "Delete note",
+    });
+    if (!ok) return;
     dispatch({ kind: "note.delete", id: note.id });
     offerUndo("Note deleted", { kind: "note.restore", id: note.id, note });
   };

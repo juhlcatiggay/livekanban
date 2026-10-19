@@ -2,6 +2,7 @@
 
 import type { BoardData } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
+import { confirmAction } from "@/lib/confirm";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
 import { CardDialog } from "./card-dialog";
@@ -21,7 +22,13 @@ export function CardDialogFor({ board, cardId, onClose }: { board: BoardData; ca
       columnTitle={board.columns[card.columnId]?.title ?? ""}
       onClose={onClose}
       readOnly={!can.editCards}
-      onDelete={(c) => {
+      onDelete={async (c) => {
+        const ok = await confirmAction({
+          title: `Delete card “${c.title}”?`,
+          body: "You can restore it from the Trash for 7 days.",
+          confirmLabel: "Delete card",
+        });
+        if (!ok) return;
         onClose();
         dispatch({ kind: "card.delete", id: c.id });
         offerUndo(`Card “${c.title}” deleted`, { kind: "card.restore", id: c.id, card: c });

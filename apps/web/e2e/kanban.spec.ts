@@ -143,11 +143,22 @@ test("cards can be reordered and moved with the keyboard", async ({ page }) => {
   await expect(card(column(page, "Doing"), "First")).toBeVisible();
 });
 
-test("deleting a column can be undone", async ({ page }) => {
+test("deleting a column asks first, and can be undone", async ({ page }) => {
   await createBoard(page);
   await addCard(page, "Doing", "Keep me");
+
+  // Cancel keeps it.
   await column(page, "Doing").getByLabel("Column Doing options").click();
   await page.getByRole("button", { name: "Delete column" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete column “Doing”?" });
+  await expect(confirm).toContainText("Its 1 card will be deleted with it");
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(column(page, "Doing")).toBeVisible();
+
+  await column(page, "Doing").getByLabel("Column Doing options").click();
+  await page.getByRole("button", { name: "Delete column" }).click();
+  await confirm.getByRole("button", { name: "Delete column" }).click();
   await expect(column(page, "Doing")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Undo", exact: true }).click();

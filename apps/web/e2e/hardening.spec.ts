@@ -54,6 +54,7 @@ test("deleted cards can be restored from the trash", async ({ page }) => {
   await addCard(page, "Doing", "Gone soon");
   await card(page, "Gone soon").click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete card" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete card" }).click();
   await expect(card(page, "Gone soon")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Trash", exact: true }).click();

@@ -9,6 +9,7 @@ import { useCan } from "@/lib/use-can";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
 import { BoardActions } from "./board-actions";
+import { ConfirmDialog } from "./confirm-dialog";
 import { InlineEdit } from "./kanban/inline-edit";
 import { BulletinBoard } from "./bulletin/bulletin-board";
 import { CalendarView } from "./calendar/calendar-view";
@@ -82,6 +83,7 @@ export function Board({ boardId }: { boardId: string }) {
       </main>
       <CursorLayer />
       <UndoToast />
+      <ConfirmDialog />
       <ErrorToast />
       <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
         <KeptUntil />
