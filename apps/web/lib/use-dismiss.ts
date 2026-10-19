@@ -13,14 +13,16 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 export function useDismiss(): RefObject<HTMLDetailsElement | null> {
   const ref = useRef<HTMLDetailsElement>(null);
 
+  // Listeners look the element up when an event happens, so menus that only
+  // render later (e.g. once you're confirmed as host) are covered too.
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (el.open && !el.contains(e.target as Node)) el.open = false;
+      const el = ref.current;
+      if (el?.open && !el.contains(e.target as Node)) el.open = false;
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !el.open) return;
+      const el = ref.current;
+      if (e.key !== "Escape" || !el?.open) return;
       el.open = false;
       el.querySelector("summary")?.focus();
     };
@@ -34,12 +36,13 @@ export function useDismiss(): RefObject<HTMLDetailsElement | null> {
   }, []);
 
   // Runs when the page is hidden by a navigation, before it's shown again.
-  useLayoutEffect(() => {
-    const el = ref.current;
-    return () => {
-      if (el) el.open = false;
-    };
-  }, []);
+  useLayoutEffect(
+    () => () => {
+      // Read at hide time: the element may have rendered after mount.
+      if (ref.current) ref.current.open = false;
+    },
+    [],
+  );
 
   return ref;
 }
