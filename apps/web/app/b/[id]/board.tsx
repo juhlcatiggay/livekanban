@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { Peer } from "@livekanban/protocol";
 import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store";
 import { getIdentity } from "@/lib/identity";
+import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
 import { InlineEdit } from "./kanban/inline-edit";
 import { KanbanBoard } from "./kanban/kanban-board";
+import { CursorLayer } from "./presence/cursor-layer";
+import { PresenceBar } from "./presence/presence-bar";
 
 export function Board({ boardId }: { boardId: string }) {
   const status = useBoard((s) => s.status);
@@ -15,6 +17,8 @@ export function Board({ boardId }: { boardId: string }) {
   const dispatch = useBoard((s) => s.dispatch);
 
   useEffect(() => connectBoard(boardId, getIdentity()), [boardId]);
+  useCursorSender();
+  useActivity();
 
   if (status === "expired") return <ExpiredBoard />;
   if (status === "full") {
@@ -46,6 +50,7 @@ export function Board({ boardId }: { boardId: string }) {
       <main className="flex min-h-0 flex-1 flex-col">
         {board ? <KanbanBoard board={board} /> : <p className="m-auto text-stone-500">Loading board…</p>}
       </main>
+      <CursorLayer />
       <ErrorToast />
       <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
         <KeptUntil />
@@ -74,38 +79,6 @@ function ErrorToast() {
       </button>
     </div>
   );
-}
-
-function PresenceBar() {
-  const me = useBoard((s) => s.me);
-  const self = useBoard((s) => s.self);
-  const peers = useBoard((s) => s.peers);
-  const everyone: Peer[] = [...(me && self ? [{ ...me, connectionId: self }] : []), ...Object.values(peers)];
-
-  return (
-    <ul className="flex -space-x-2" aria-label={`${everyone.length} people on this board`}>
-      {everyone.map((p) => (
-        <li key={p.connectionId}>
-          <span
-            title={p.connectionId === self ? `${p.name} (you)` : p.name}
-            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white dark:border-stone-950"
-            style={{ backgroundColor: p.color }}
-          >
-            {initials(p.name)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function CopyLinkButton() {

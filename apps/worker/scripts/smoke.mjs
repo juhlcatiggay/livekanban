@@ -270,6 +270,78 @@ const tests = {
     for (const c of [a, hidden]) c.ws.close();
   },
 
+  async "cursors are relayed to others with the sender's id, never echoed"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const b = await join(id, "Amber Fox");
+    await a.next(); // join(b)
+    a.ws.send(JSON.stringify(["c", "board", 0.123456, 0.5]));
+    a.ws.send(JSON.stringify(["c", "bad anchor!", 0.1, 0.1])); // dropped
+    a.ws.send(JSON.stringify(["c", "board", 5, 0.1])); // out of range, dropped
+    a.ws.send(JSON.stringify(["c", null, 0, 0]));
+    assert.deepEqual(await b.next(), ["c", a.welcome.self, "board", 0.1235, 0.5]);
+    assert.deepEqual(await b.next(), ["c", a.welcome.self, null, 0, 0]);
+    a.send({ t: "ping", at: 7 });
+    assert.deepEqual(await a.next(), { t: "pong", at: 7 }); // no cursor echo before the pong
+    a.ws.close();
+    b.ws.close();
+  },
+
+  async "presence and profile changes reach everyone, including the sender"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const b = await join(id, "Amber Fox");
+    await a.next(); // join(b)
+    a.send({ t: "presence", patch: { editing: "card00001", idle: true } });
+    for (const c of [a, b]) {
+      const { t, peer } = await c.next();
+      assert.equal(t, "peer");
+      assert.equal(peer.editing, "card00001");
+      assert.equal(peer.idle, true);
+    }
+    a.send({ t: "profile", name: "  Ada  ", color: "#4f46e5" });
+    const { peer } = await b.next();
+    assert.deepEqual([peer.name, peer.color], ["Ada", "#4f46e5"]);
+    await a.next();
+
+    const c = await join(id, "Plum Owl");
+    const ada = c.welcome.peers.find((p) => p.name === "Ada");
+    assert.equal(ada.editing, "card00001");
+    for (const x of [a, b, c]) x.ws.close();
+  },
+
+  async "only one person can hold a card, and others can't move it meanwhile"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const b = await join(id, "Amber Fox");
+    await a.next(); // join(b)
+    const col = firstColumnId(a.welcome);
+    await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "Hot" });
+    await b.next(); // opb
+
+    a.send({ t: "lock", cardId: "card00001" });
+    assert.equal((await a.next()).peer.holding, "card00001");
+    assert.equal((await b.next()).peer.holding, "card00001");
+
+    b.send({ t: "lock", cardId: "card00001" });
+    assert.deepEqual(await b.next(), { t: "lockDenied", cardId: "card00001", by: "Teal Otter" });
+    const blocked = await op(b, { kind: "card.move", id: "card00001", columnId: col, position: "a5" });
+    assert.equal(blocked.t, "reject");
+    assert.match(blocked.reason, /Teal Otter is moving/);
+
+    // Dropping commits the move and releases the lock.
+    const moved = await op(a, { kind: "card.move", id: "card00001", columnId: col, position: "a1" });
+    assert.equal(moved.t, "ack");
+    assert.equal((await a.next()).peer.holding, null);
+    assert.equal((await b.next()).t, "opb");
+    assert.equal((await b.next()).peer.holding, null);
+
+    b.send({ t: "lock", cardId: "card00001" });
+    assert.equal((await b.next()).peer.holding, "card00001");
+    a.ws.close();
+    b.ws.close();
+  },
+
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);

@@ -139,11 +139,14 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 
 | Type | Direction | Stream | Payload | Rate |
 | --- | --- | --- | --- | --- |
-| `hello` | client → room | presence | name, color, last seq | on connect |
+| `hello` | client → room | presence | client ID, name, color, last seq | on connect |
 | `welcome` | room → client | both | presence list + `sync`: full snapshot, or a replay of missed ops when the log still covers `lastSeq` | on connect / resync |
-| `cursor` | both | presence | anchor, fx, fy, held card ID | ≤ 30/s per person |
-| `editing` | both | presence | target ID or null | on focus/blur |
-| `lock` / `unlock` | both | presence | card ID, owner | on drag start/end |
+| `cursor` | both | presence | bare array `["c", anchor, fx, fy]`; the room prefixes the sender's connection ID. The held card comes from the peer's `holding`, not the cursor | ≤ 30/s per person |
+| `presence` | client → room | presence | `editing` target ID or null, `idle`, `away` | on change |
+| `profile` | client → room | presence | name, color | on change |
+| `peer` | room → all | presence | the updated peer (editing, holding, idle, away, name, color), also sent to that peer | on change |
+| `lock` / `unlock` | client → room | presence | card ID; a granted lock arrives as `peer.holding` | on drag start/end |
+| `lockDenied` | room → client | presence | card ID, holder's name | on contention |
 | `op` | client → room | ops | client op ID, kind, data | on each change |
 | `ack` / `reject` | room → client | ops | client op ID + canonical committed op (positions may be adjusted), or a reason | per op |
 | `opb` | room → others | ops | seq, op, actor, time | per committed op |
