@@ -47,6 +47,7 @@ export function NoteFace({ note, lifted = false, className = "" }: { note: Note;
       } ${className}`}
       style={lifted ? { width: note.w, height: note.h } : undefined}
     >
+      {note.number > 0 && <span className="float-right ml-2 text-[11px] tabular-nums text-stone-500">#{note.number}</span>}
       {note.text ? <Markdown text={note.text} compact onPaper /> : <span className="text-stone-400">Empty note</span>}
     </div>
   );

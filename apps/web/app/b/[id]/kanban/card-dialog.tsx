@@ -131,6 +131,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
           </button>
         </div>
         <p className="-mt-3 px-1 text-xs text-stone-500">
+          {card.number > 0 && <span className="mr-1.5 font-medium tabular-nums">#{card.number}</span>}
           in {columnTitle}
           {readOnly && <span className="ml-2">· view only</span>}
           {editors.length > 0 && (
@@ -164,7 +165,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
               rows={10}
               value={description}
               maxLength={LIMITS.description}
-              placeholder="Add details. Markdown works: **bold**, - lists, [links](https://…)"
+              placeholder="Add details. Markdown works: **bold**, - lists, [links](https://…). Mention a card or note with #number."
               onChange={(e) => {
                 draft("description", e.target.value);
                 queue({ description: e.target.value });

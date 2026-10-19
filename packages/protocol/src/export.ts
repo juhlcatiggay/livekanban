@@ -78,7 +78,7 @@ export function importToOps(data: unknown): { ops: Op[]; dropped: number } | nul
   }
 
   for (const c of values(board.cards)) {
-    raw.push({ kind: "card.create", id: c.id, columnId: c.columnId, position: c.position, title: c.title });
+    raw.push({ kind: "card.create", id: c.id, columnId: c.columnId, position: c.position, title: c.title, number: c.number });
     const patch: Obj = {};
     if (typeof c.description === "string" && c.description) patch.description = c.description;
     if (c.color) patch.color = c.color;
@@ -102,6 +102,7 @@ export function importToOps(data: unknown): { ops: Op[]; dropped: number } | nul
       h,
       color: n.color,
       text: n.text,
+      number: n.number,
     });
   }
 
@@ -110,7 +111,13 @@ export function importToOps(data: unknown): { ops: Op[]; dropped: number } | nul
   const ops: Op[] = [];
   for (const r of raw) {
     const op = parseOp(r);
-    if (op) ops.push(op);
+    if (!op) continue;
+    // parseOp drops room-assigned fields; carry the original number so #mentions keep pointing at the same items.
+    const n = (r as Obj).number;
+    if ((op.kind === "card.create" || op.kind === "note.create") && typeof n === "number" && Number.isInteger(n) && n > 0) {
+      op.number = n;
+    }
+    ops.push(op);
   }
   return { ops, dropped: raw.length - ops.length };
 }

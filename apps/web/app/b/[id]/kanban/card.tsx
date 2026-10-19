@@ -18,7 +18,10 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
       }`}
     >
       {card.color && <span className={`absolute inset-x-0 top-0 h-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
-      <p className="break-words font-medium">{card.title}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words font-medium">{card.title}</p>
+        {card.number > 0 && <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">#{card.number}</span>}
+      </div>
       {card.labels.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1">
           {card.labels.map((l) => (

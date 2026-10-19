@@ -341,3 +341,42 @@
     background: #67060c;
   }
 }
+
+/* #12 mentions of cards and notes. */
+.markdown .md-mention {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0 0.45em;
+  border: 1px solid var(--md-strong-border);
+  border-radius: 999px;
+  background: var(--md-code-bg);
+  color: var(--md-text);
+  font-size: 0.875em;
+  line-height: 1.6;
+  text-decoration: none;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+.markdown .md-mention:hover {
+  border-color: var(--md-link);
+  color: var(--md-link);
+}
+.markdown .md-mention-number {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.markdown .md-mention-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.markdown .md-mention-icon {
+  opacity: 0.6;
+}
+.markdown .md-mention-missing {
+  color: var(--md-faint);
+  border-style: dashed;
+  cursor: default;
+}

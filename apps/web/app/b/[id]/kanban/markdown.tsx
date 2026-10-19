@@ -5,11 +5,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { MENTION_HREF_PREFIX, Mention, remarkMentions } from "./mention";
 
 /**
  * Renders card descriptions and sticky notes: full GitHub-flavored Markdown
  * (headings 1–6, nested and task lists, tables, quotes, code with syntax
- * highlighting, footnotes, strikethrough), with a single Enter as a line break.
+ * highlighting, footnotes, strikethrough), with a single Enter as a line break,
+ * and #12 mentions of other cards and notes as links to them.
  *
  * Safe for untrusted text from anyone with the link:
  * - raw HTML is dropped (`skipHtml`), never rendered;
@@ -43,7 +45,9 @@ function ClickToLoadImage({ src, alt }: { src?: string; alt?: string }) {
 
 const components: Components = {
   a: ({ href, children }) =>
-    href?.startsWith("#") ? (
+    href?.startsWith(MENTION_HREF_PREFIX) ? (
+      <Mention number={Number(href.slice(MENTION_HREF_PREFIX.length))} />
+    ) : href?.startsWith("#") ? (
       // In-document links (footnotes) stay in place.
       <a href={href}>{children}</a>
     ) : (
@@ -60,7 +64,7 @@ const components: Components = {
   ),
 };
 
-const remarkPlugins = [remarkGfm, remarkBreaks];
+const remarkPlugins = [remarkGfm, remarkBreaks, remarkMentions];
 const rehypePlugins = [rehypeHighlight];
 
 interface MarkdownProps {

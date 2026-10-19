@@ -515,6 +515,33 @@ const tests = {
     later.ws.close();
   },
 
+  async "cards and notes share one reference counter the room controls"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const col = firstColumnId(a.welcome);
+    const before = Date.now();
+    const card = await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "One", number: 99 });
+    const note = await op(a, { kind: "note.create", id: "note00001", x: 0, y: 0, w: 200, h: 200, color: "amber", text: "Two", number: 5 });
+    const card2 = await op(a, { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Three" });
+    assert.deepEqual([card.op.op.number, note.op.op.number, card2.op.op.number], [1, 2, 3], "clients can't pick numbers");
+
+    // Converting gives the new item a fresh number; numbers are never reused.
+    const converted = await op(a, { kind: "note.toCard", id: "note00001", cardId: "card00003", columnId: col, position: "a2" });
+    assert.equal(converted.op.op.number, 4);
+
+    a.ws.close();
+    const b = await join(id, "Amber Fox");
+    const board = b.welcome.sync.board;
+    assert.deepEqual(Object.values(board.cards).map((c) => c.number).sort(), [1, 3, 4]);
+    await op(b, { kind: "note.create", id: "note00002", x: 0, y: 0, w: 200, h: 200, color: "blue", text: "Five" });
+    b.ws.close();
+    const c = await join(id, "Plum Owl");
+    const n = c.welcome.sync.board.notes.note00002;
+    assert.equal(n.number, 5);
+    assert.ok(n.createdAt >= before && n.createdAt <= Date.now(), "notes record when they were created");
+    c.ws.close();
+  },
+
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);

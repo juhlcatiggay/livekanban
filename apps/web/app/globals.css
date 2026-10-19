@@ -25,3 +25,31 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Where a #mention leads: shake for a second with a highlight ring (see lib/jump.ts). */
+@keyframes lk-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15%,
+  45%,
+  75% {
+    transform: translateX(-6px) rotate(-1deg);
+  }
+  30%,
+  60%,
+  90% {
+    transform: translateX(6px) rotate(1deg);
+  }
+}
+.lk-shake {
+  animation: lk-shake 0.9s ease-in-out;
+  border-radius: 0.5rem;
+  box-shadow: 0 0 0 3px #14b8a6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-shake {
+    animation: none;
+  }
+}

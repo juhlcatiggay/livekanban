@@ -21,8 +21,8 @@ import {
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). */
-export const SCHEMA_VERSION = 5;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. */
+export const SCHEMA_VERSION = 6;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
@@ -43,6 +43,7 @@ interface ColumnRow extends Row {
 
 interface CardRow extends Row {
   id: string;
+  number: number;
   column_id: string;
   position: string;
   title: string;
@@ -59,6 +60,8 @@ interface CardRow extends Row {
 
 interface NoteRow extends Row {
   id: string;
+  number: number;
+  created_at: number;
   x: number;
   y: number;
   w: number;
@@ -88,6 +91,7 @@ const toColumn = (r: ColumnRow): Column => ({
 
 const toCard = (r: CardRow): Card => ({
   id: r.id,
+  number: r.number,
   columnId: r.column_id,
   position: r.position,
   title: r.title,
@@ -102,6 +106,8 @@ const toCard = (r: CardRow): Card => ({
 
 const toNote = (r: NoteRow): Note => ({
   id: r.id,
+  number: r.number,
+  createdAt: r.created_at,
   x: r.x,
   y: r.y,
   w: r.w,
@@ -157,6 +163,7 @@ export class BoardStorage {
         );
         CREATE TABLE IF NOT EXISTS cards (
           id TEXT PRIMARY KEY,
+          number INTEGER NOT NULL DEFAULT 0,
           column_id TEXT NOT NULL,
           position TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -173,6 +180,8 @@ export class BoardStorage {
         CREATE INDEX IF NOT EXISTS cards_by_column ON cards (column_id, position);
         CREATE TABLE IF NOT EXISTS notes (
           id TEXT PRIMARY KEY,
+          number INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL DEFAULT 0,
           x INTEGER NOT NULL,
           y INTEGER NOT NULL,
           w INTEGER NOT NULL,
@@ -196,8 +205,44 @@ export class BoardStorage {
       if (this.addColumn("cards", "assignees", "TEXT NOT NULL DEFAULT '[]'")) {
         this.sql.exec("UPDATE cards SET assignees = json_array(assignee) WHERE assignee != ''");
       }
+      // v6: reference numbers (#12) for cards and notes, and note creation times.
+      this.addColumn("cards", "number", "INTEGER NOT NULL DEFAULT 0");
+      this.addColumn("notes", "number", "INTEGER NOT NULL DEFAULT 0");
+      if (this.addColumn("notes", "created_at", "INTEGER NOT NULL DEFAULT 0")) {
+        this.sql.exec("UPDATE notes SET created_at = updated_at");
+      }
+      this.numberExistingItems();
       this.setMeta("schema_version", String(SCHEMA_VERSION));
     });
+  }
+
+  /** Gives every card and note without a number one, oldest first (cards, then notes). */
+  private numberExistingItems() {
+    for (const table of ["cards", "notes"]) {
+      for (const r of this.sql.exec<{ id: string }>(`SELECT id FROM ${table} WHERE number = 0 ORDER BY rowid`).toArray()) {
+        this.sql.exec(`UPDATE ${table} SET number = ? WHERE id = ?`, this.takeNumber(), r.id);
+      }
+    }
+  }
+
+  /**
+   * The next free reference number. An import may ask to keep an item's
+   * original number; that's honoured if it's free, and the counter moves past it.
+   */
+  private takeNumber(requested?: number): number {
+    let next = Number(this.getMeta("next_number") ?? 1);
+    let n = next;
+    if (requested && requested > 0 && !this.numberTaken(requested)) n = requested;
+    else while (this.numberTaken(n)) n++;
+    next = Math.max(next, n + 1);
+    this.setMeta("next_number", String(next));
+    return n;
+  }
+
+  private numberTaken(n: number): boolean {
+    return (
+      this.sql.exec("SELECT 1 FROM cards WHERE number = ? UNION ALL SELECT 1 FROM notes WHERE number = ?", n, n).toArray().length > 0
+    );
   }
 
   /** Adds a column to an existing table if it's missing. Returns true if it was added. */
@@ -427,8 +472,10 @@ export class BoardStorage {
 
   private insertNote(n: Note) {
     this.sql.exec(
-      "INSERT INTO notes (id, x, y, w, h, z, color, text, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO notes (id, number, created_at, x, y, w, h, z, color, text, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       n.id,
+      n.number,
+      n.createdAt,
       n.x,
       n.y,
       n.w,
@@ -560,16 +607,18 @@ export class BoardStorage {
         this.liveColumn(op.columnId);
         this.checkCardLimit();
         const position = this.freePosition("cards", op.position, op.id, op.columnId);
+        const number = this.takeNumber(op.number);
         this.sql.exec(
-          "INSERT INTO cards (id, column_id, position, title, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cards (id, number, column_id, position, title, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
           op.id,
+          number,
           op.columnId,
           position,
           op.title,
           now,
           actor,
         );
-        return { ...op, position };
+        return { ...op, position, number };
       }
 
       case "card.update":
@@ -604,8 +653,9 @@ export class BoardStorage {
         if (this.noteRow(op.id)) reject("Note already exists");
         this.checkNoteLimit();
         const z = this.topZ();
-        this.insertNote({ ...op, z, updatedAt: now, updatedBy: actor });
-        return { ...op, z };
+        const number = this.takeNumber(op.number);
+        this.insertNote({ ...op, number, z, createdAt: now, updatedAt: now, updatedBy: actor });
+        return { ...op, z, number };
       }
 
       case "note.update":
@@ -652,10 +702,12 @@ export class BoardStorage {
         const { title, description } = noteToCardFields(note.text);
         // Converted, not deleted: remove the note outright so the trash can't offer a duplicate.
         this.sql.exec("DELETE FROM notes WHERE id = ?", op.id);
+        const number = this.takeNumber();
         this.sql.exec(
-          `INSERT INTO cards (id, column_id, position, title, description, color, updated_at, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO cards (id, number, column_id, position, title, description, color, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           op.cardId,
+          number,
           op.columnId,
           position,
           title,
@@ -664,7 +716,7 @@ export class BoardStorage {
           now,
           actor,
         );
-        return { ...op, position };
+        return { ...op, position, number };
       }
 
       case "card.toNote": {
@@ -673,8 +725,11 @@ export class BoardStorage {
         this.checkNoteLimit();
         const z = this.topZ();
         this.sql.exec("DELETE FROM cards WHERE id = ?", op.id);
+        const number = this.takeNumber();
         this.insertNote({
           id: op.noteId,
+          number,
+          createdAt: now,
           x: op.x,
           y: op.y,
           ...CONVERTED_NOTE_SIZE,
@@ -684,7 +739,7 @@ export class BoardStorage {
           updatedAt: now,
           updatedBy: actor,
         });
-        return { ...op, z };
+        return { ...op, z, number };
       }
     }
   }

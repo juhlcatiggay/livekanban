@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CANVAS, LIMITS, NOTE_SIZE, cardsByColumn, sortedColumns, type BoardData, type Note } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { confirmAction } from "@/lib/confirm";
+import { clearJump, revealAndShake, useJump } from "@/lib/jump";
 import { indexPresence } from "@/lib/presence-index";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
@@ -33,6 +34,18 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   // State rather than a ref so the minimap re-subscribes once the element exists.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const full = notes.length >= LIMITS.notes;
+
+  // A #mention click asks to show a note: glide to it and shake it.
+  useEffect(() => {
+    const follow = () => {
+      const target = useJump.getState().target;
+      if (target?.kind !== "note") return;
+      clearJump();
+      requestAnimationFrame(() => revealAndShake(target.id));
+    };
+    follow();
+    return useJump.subscribe(follow);
+  }, []);
 
   const createNote = (x: number, y: number) => {
     if (full) return;
