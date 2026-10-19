@@ -4,15 +4,25 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "durable_objects": {
-    "bindings": [{ "name": "BoardRoom", "class_name": "BoardRoom" }]
+    "bindings": [
+      { "name": "BoardRoom", "class_name": "BoardRoom" },
+      { "name": "CreationLimiter", "class_name": "CreationLimiter" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BoardRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BoardRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["CreationLimiter"] }
+  ],
   // Fixed so the web app's NEXT_PUBLIC_PARTY_HOST (localhost:8787) always matches.
   "dev": { "port": 8787 },
   "vars": {
     // Comma-separated origins allowed to create boards and open sockets.
     "ALLOWED_ORIGINS": "http://localhost:3000",
-    // Inactivity window before a board is deleted; shortened in staging to test expiry.
-    "EXPIRY_DAYS": "60"
+    // Durations: 60d, 7d, 2m, 30s... Staging shortens EXPIRY to 2m to test the whole expiry flow.
+    "EXPIRY": "60d",
+    "TRASH_RETENTION": "7d",
+    "BACKUP_EVERY": "1d",
+    "CREATE_LIMIT_PER_HOUR": "20"
   }
+  // Secrets (wrangler secret put / .dev.vars): TURNSTILE_SECRET, ADMIN_TOKEN. Both optional.
 }
