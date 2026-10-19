@@ -52,8 +52,14 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   await addCard(page, "To do", "Write spec");
   await card(page, "Write spec").click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Add description" }).click();
   await dialog.getByLabel("Description").fill("## Scope\nEverything in phase 2");
-  await dialog.getByLabel("Assignee").fill("Juhl");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  // Several assignees: Enter or a comma adds each one.
+  await dialog.getByLabel("Add assignee").fill("Juhl");
+  await dialog.getByLabel("Add assignee").press("Enter");
+  await dialog.getByLabel("Add assignee").fill("Ada Lovelace,");
+  await expect(dialog.getByRole("button", { name: "Remove Ada Lovelace" })).toBeVisible();
   await dialog.getByLabel("Labels").fill("docs, urgent");
   await dialog.getByLabel("Due date").fill("2026-11-30");
   await dialog.getByRole("button", { name: "Purple" }).click();
@@ -71,12 +77,13 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   const saved = card(column(page, "To do"), "Write spec");
   await expect(saved).toContainText("docs");
   await expect(saved).toContainText("urgent");
-  await expect(saved).toContainText("@Juhl");
+  await expect(saved.getByLabel("Assigned to Juhl, Ada Lovelace")).toBeVisible();
+  await expect(saved).toContainText("JAL"); // initials of both
   await expect(saved).toContainText("Due 30 Nov");
 
   await saved.click();
   await expect(page.getByRole("dialog").getByRole("region", { name: "Description preview" }).getByRole("heading", { name: "Scope" })).toBeVisible();
-  await page.getByRole("dialog").getByRole("tab", { name: "write" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Edit" }).click();
   await expect(page.getByRole("dialog").getByLabel("Description")).toHaveValue("## Scope\nEverything in phase 2");
 });
 
@@ -128,7 +135,7 @@ test("cards can be reordered and moved with the keyboard", async ({ page }) => {
   // Move "Second" above "First".
   await card(page, "Second").focus();
   await keyboardDrag(page, ["ArrowUp"]);
-  await expect(column(page, "To do").getByRole("button", { name: /\. Press Enter/ })).toHaveText(["Second", "First"]);
+  await expect(column(page, "To do").getByRole("button", { name: /\. Press Enter/ })).toHaveText([/^Second/, /^First/]); // cards also show their #number
 
   // Move "First" into the next column.
   await card(page, "First").focus();
@@ -141,11 +148,22 @@ test("cards can be reordered and moved with the keyboard", async ({ page }) => {
   await expect(card(column(page, "Doing"), "First")).toBeVisible();
 });
 
-test("deleting a column can be undone", async ({ page }) => {
+test("deleting a column asks first, and can be undone", async ({ page }) => {
   await createBoard(page);
   await addCard(page, "Doing", "Keep me");
+
+  // Cancel keeps it.
   await column(page, "Doing").getByLabel("Column Doing options").click();
   await page.getByRole("button", { name: "Delete column" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete column “Doing”?" });
+  await expect(confirm).toContainText("Its 1 card will be deleted with it");
+  await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(column(page, "Doing")).toBeVisible();
+
+  await column(page, "Doing").getByLabel("Column Doing options").click();
+  await page.getByRole("button", { name: "Delete column" }).click();
+  await confirm.getByRole("button", { name: "Delete column" }).click();
   await expect(column(page, "Doing")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Undo", exact: true }).click();

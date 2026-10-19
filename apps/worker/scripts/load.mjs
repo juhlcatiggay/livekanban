@@ -86,7 +86,7 @@ function join(boardId, name, stats, measure) {
     socket.addEventListener("error", () => reject(new Error(`socket error for ${name}`)), { once: true });
     socket.addEventListener("close", (e) => (client.closedEarly ??= e.code));
     socket.addEventListener("open", () => {
-      socket.send(JSON.stringify({ t: "hello", clientId: name, name, color: "#0d9488", lastSeq: 0 }));
+      socket.send(JSON.stringify({ t: "hello", clientId: name, name, color: "#0d9488", custom: true, lastSeq: 0 }));
     });
     socket.addEventListener("message", (e) => {
       const data = e.data;

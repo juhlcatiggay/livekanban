@@ -56,7 +56,7 @@ function client(ws, boardId) {
 async function join(ws, boardId, name = "Tester") {
   const c = client(ws, boardId);
   await c.opened;
-  c.send({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq: 0 });
+  c.send({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", custom: true, lastSeq: 0 });
   const welcome = await c.until((m) => m.t === "welcome");
   return Object.assign(c, { welcome });
 }
@@ -176,14 +176,14 @@ const tests = {
         },
         cards: {
           card00001: {
-            id: "card00001", columnId: "col0000001", position: "a0", title: "Keep", description: "Details",
+            id: "card00001", number: 7, columnId: "col0000001", position: "a0", title: "Keep", description: "See #3",
             color: "blue", labels: ["ux"], assignee: "Ada", dueDate: "2026-12-01", updatedAt: 0, updatedBy: "x",
           },
           card00002: { id: "card00002", columnId: "nosuchcolumn", position: "a0", title: "Orphan" },
           bad: { id: "!", title: "<script>" },
         },
         notes: {
-          note00001: { id: "note00001", x: 99999, y: 10, w: 5, h: 200, z: 1, color: "pink", text: "Pinned" },
+          note00001: { id: "note00001", number: 3, x: 99999, y: 10, w: 5, h: 200, z: 1, color: "pink", text: "Pinned" },
         },
         pinnedNoteId: "note00001",
       },
@@ -199,8 +199,10 @@ const tests = {
     assert.equal(board.columns.col0000001.wipLimit, 3);
     assert.deepEqual(Object.keys(board.cards), ["card00001"]);
     assert.deepEqual(board.cards.card00001.labels, ["ux"]);
+    assert.deepEqual(board.cards.card00001.assignees, ["Ada"], "a legacy single assignee imports as a list");
     assert.equal(board.pinnedNoteId, "note00001");
     assert.equal(board.notes.note00001.w, 120, "sizes are clamped");
+    assert.deepEqual([board.cards.card00001.number, board.notes.note00001.number], [7, 3], "imports keep reference numbers, so #mentions still resolve");
     c.socket.close();
 
     const bad = await newBoard(http, { import: { format: "trello" } });

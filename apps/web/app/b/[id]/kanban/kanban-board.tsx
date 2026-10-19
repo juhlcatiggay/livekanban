@@ -28,6 +28,8 @@ import {
   type Column,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { confirmAction } from "@/lib/confirm";
+import { SHAKE_MS, clearJump, revealAndShake, useJump } from "@/lib/jump";
 import { indexPresence } from "@/lib/presence-index";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
@@ -107,6 +109,33 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     columnIdsRef.current = columns.map((c) => c.id);
   }, [columns]);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+
+  // A #mention click (here, from the bulletin or calendar) asks to show a card:
+  // close any open card, glide to it, shake it for a second, then open it.
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const follow = () => {
+      const target = useJump.getState().target;
+      if (target?.kind !== "card") return;
+      clearJump();
+      timers.push(
+        setTimeout(() => {
+          setOpenCardId(null);
+          // Wait a frame so a just-mounted board (after switching tabs) is laid out.
+          requestAnimationFrame(() => {
+            if (!revealAndShake(target.id)) return;
+            timers.push(setTimeout(() => setOpenCardId(target.id), SHAKE_MS));
+          });
+        }, 0),
+      );
+    };
+    follow();
+    const unsubscribe = useJump.subscribe(follow);
+    return () => {
+      unsubscribe();
+      timers.forEach(clearTimeout);
+    };
+  }, []);
   const offerUndo = useUndo((s) => s.offer);
 
   const order = dragOrder ?? baseOrder;
@@ -175,7 +204,16 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     }),
   );
 
-  const deleteColumn = (column: Column) => {
+  const deleteColumn = async (column: Column) => {
+    const count = cardsIn[column.id]?.length ?? 0;
+    const ok = await confirmAction({
+      title: `Delete column “${column.title}”?`,
+      body: count
+        ? `Its ${count} card${count === 1 ? "" : "s"} will be deleted with it. You can restore them from the Trash for 7 days.`
+        : "You can restore it from the Trash for 7 days.",
+      confirmLabel: "Delete column",
+    });
+    if (!ok) return;
     dispatch({ kind: "column.delete", id: column.id });
     offerUndo(`Column “${column.title}” deleted`, {
       kind: "column.restore",

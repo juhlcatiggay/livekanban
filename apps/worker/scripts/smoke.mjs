@@ -50,7 +50,7 @@ function connect(boardId) {
   return { ws, opened, closed, next, until, send: (m) => ws.send(JSON.stringify(m)) };
 }
 
-const hello = (name, lastSeq = 0, hostKey) => ({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq, hostKey });
+const hello = (name, lastSeq = 0, hostKey) => ({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", custom: true, lastSeq, hostKey });
 
 async function newBoard() {
   const res = await fetch(`${base}/api/boards`, { method: "POST" });
@@ -513,6 +513,77 @@ const tests = {
     const later = await join(id, "Late");
     assert.deepEqual(later.welcome.sync.board.permissions, lockdown);
     later.ws.close();
+  },
+
+  async "cards and notes share one reference counter the room controls"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const col = firstColumnId(a.welcome);
+    const before = Date.now();
+    const card = await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "One", number: 99 });
+    const note = await op(a, { kind: "note.create", id: "note00001", x: 0, y: 0, w: 200, h: 200, color: "amber", text: "Two", number: 5 });
+    const card2 = await op(a, { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Three" });
+    assert.deepEqual([card.op.op.number, note.op.op.number, card2.op.op.number], [1, 2, 3], "clients can't pick numbers");
+
+    // Converting gives the new item a fresh number; numbers are never reused.
+    const converted = await op(a, { kind: "note.toCard", id: "note00001", cardId: "card00003", columnId: col, position: "a2" });
+    assert.equal(converted.op.op.number, 4);
+
+    a.ws.close();
+    const b = await join(id, "Amber Fox");
+    const board = b.welcome.sync.board;
+    assert.deepEqual(Object.values(board.cards).map((c) => c.number).sort(), [1, 3, 4]);
+    await op(b, { kind: "note.create", id: "note00002", x: 0, y: 0, w: 200, h: 200, color: "blue", text: "Five" });
+    b.ws.close();
+    const c = await join(id, "Plum Owl");
+    const n = c.welcome.sync.board.notes.note00002;
+    assert.equal(n.number, 5);
+    assert.ok(n.createdAt >= before && n.createdAt <= Date.now(), "notes record when they were created");
+    c.ws.close();
+  },
+
+  async "each member gets a name unique on the board, kept across visits"() {
+    const id = await newBoard();
+    const enter = async (clientId, name, custom) => {
+      const c = connect(id);
+      await c.opened;
+      c.send({ t: "hello", clientId, name, color: "#0d9488", custom, lastSeq: 0 });
+      return Object.assign(c, { welcome: await c.until((m) => m.t === "welcome") });
+    };
+
+    // Without a chosen name, the room hands out distinct Marvel names.
+    const a = await enter("browser-a", "Guest", false);
+    const b = await enter("browser-b", "Guest", false);
+    assert.notEqual(a.welcome.you.name, "Guest");
+    assert.notEqual(a.welcome.you.name.toLowerCase(), b.welcome.you.name.toLowerCase());
+    assert.equal(a.welcome.peers.length, 0);
+    assert.equal(b.welcome.peers[0].name, a.welcome.you.name);
+    assert.equal(b.welcome.peers[0].clientId, undefined, "client IDs are never shown to others");
+
+    // Coming back keeps the name, whatever the browser asks for.
+    const aName = a.welcome.you.name;
+    a.ws.close();
+    const again = await enter("browser-a", "Someone Else", true);
+    assert.equal(again.welcome.you.name, aName);
+
+    // A chosen name that's taken here is replaced by a free one.
+    const c = await enter("browser-c", aName.toUpperCase(), true);
+    assert.notEqual(c.welcome.you.name.toLowerCase(), aName.toLowerCase());
+    const d = await enter("browser-d", "Ada", true);
+    assert.equal(d.welcome.you.name, "Ada");
+
+    // Renaming to someone else's name is refused; to a free one, everyone sees it.
+    d.send({ t: "profile", name: b.welcome.you.name, color: "#0d9488" });
+    const refused = await d.until((m) => m.t === "profileRejected");
+    assert.match(refused.reason, /already called/);
+    d.send({ t: "profile", name: "Ada L", color: "#4f46e5" });
+    const seen = await b.until((m) => m.t === "peer" && m.peer.connectionId === d.welcome.self);
+    assert.equal(seen.peer.name, "Ada L");
+    assert.equal(seen.peer.clientId, undefined);
+    for (const s of [again, b, c, d]) s.ws.close();
+    const d2 = await enter("browser-d", "Ada", true);
+    assert.equal(d2.welcome.you.name, "Ada L");
+    d2.ws.close();
   },
 
   async "create endpoint enforces allowed origins"() {

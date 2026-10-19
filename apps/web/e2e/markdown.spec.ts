@@ -23,8 +23,9 @@ test("descriptions render as Markdown, safely, for everyone", async ({ browser }
   await todo.getByLabel("New card title").press("Enter");
   await todo.getByLabel("New card title").press("Escape");
   await ada.getByRole("button", { name: /^Spec\. Press Enter/ }).click();
+  await ada.getByRole("dialog").getByRole("button", { name: "Add description" }).click();
   await ada.getByRole("dialog").getByLabel("Description").fill(HOSTILE);
-  await ada.getByRole("dialog").getByRole("tab", { name: "preview" }).click();
+  await ada.getByRole("dialog").getByRole("button", { name: "Done" }).click();
 
   // A second visitor opening the card sees the same rendering.
   const bob = await (await browser.newContext()).newPage();
@@ -44,9 +45,10 @@ test("descriptions render as Markdown, safely, for everyone", async ({ browser }
     const bad = preview.getByRole("link", { name: "bad" });
     expect(await bad.getAttribute("href")).not.toMatch(/javascript/i);
 
-    // Raw HTML and images never reach the DOM; the image shows as its alt text.
+    // Raw HTML never reaches the DOM, and no image loads by itself.
     await expect(preview.locator("script, img")).toHaveCount(0);
-    await expect(preview).toContainText("[image: tracker]");
+    // Images (including tracking pixels) only load after a click.
+    await expect(preview.getByRole("button", { name: "Load image from tracker.example" })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   }
 });

@@ -115,7 +115,14 @@ interface PendingOp {
 /** `hostKey` (if this browser holds one for the board) makes this tab the host. */
 export function connectBoard(boardId: string, initialIdentity: Identity, hostKey?: string): () => void {
   const set = useBoard.setState;
+  /** This browser's identity, as stored; sent in `hello`. */
   let identity = initialIdentity;
+  /** Who this browser is on this board: the room picks the name, so it can differ from `identity`. */
+  let me = initialIdentity;
+  const setMe = (name: string, color: string) => {
+    me = { ...me, name, color };
+    set({ me });
+  };
 
   /** Room state as of `seq`; null until the first sync. */
   let confirmed: BoardData | null = null;
@@ -133,7 +140,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
 
   const recompute = () => {
     if (!confirmed) return;
-    const meta = { at: Date.now(), by: identity.name };
+    const meta = { at: Date.now(), by: me.name };
     set({ board: pending.reduce((b, p) => applyOp(b, p.op, meta), confirmed) });
   };
 
@@ -210,16 +217,17 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
   };
 
   const setProfile = (name: string, color: string) => {
-    identity = { ...identity, name, color };
+    // A chosen name is kept and asked for on boards this browser hasn't joined yet.
+    identity = { ...identity, name, color, custom: true };
     saveIdentity(identity);
-    set({ me: identity });
+    setMe(name, color);
     send({ t: "profile", name, color });
   };
 
   set(
     {
       ...initialState,
-      me: identity,
+      me,
       dispatch,
       undo: () => step("undo"),
       redo: () => step("redo"),
@@ -245,7 +253,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
   };
 
   socket.addEventListener("open", () => {
-    socket.send(encode({ t: "hello", ...identity, lastSeq: confirmed ? seq : 0, hostKey }));
+    socket.send(encode({ t: "hello", ...identity, custom: identity.custom ?? false, lastSeq: confirmed ? seq : 0, hostKey }));
   });
 
   socket.addEventListener("message", (event: MessageEvent<string>) => {
@@ -271,8 +279,10 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
           self: msg.self,
           selfPeer: msg.you,
           keptUntil: msg.keptUntil,
+          me: { ...me, name: msg.you.name, color: msg.you.color },
           peers: Object.fromEntries(msg.peers.map((p) => [p.connectionId, p])),
         });
+        me = { ...me, name: msg.you.name, color: msg.you.color };
         recompute();
         for (const p of pending) sendOp(p);
         if (Object.keys(presence).length) send({ t: "presence", patch: presence });
@@ -283,8 +293,11 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
         set((s) => ({ peers: { ...s.peers, [msg.peer.connectionId]: msg.peer } }));
         break;
       case "peer":
-        if (msg.peer.connectionId === useBoard.getState().self) set({ selfPeer: msg.peer });
-        else set((s) => ({ peers: { ...s.peers, [msg.peer.connectionId]: msg.peer } }));
+        if (msg.peer.connectionId === useBoard.getState().self) {
+          set({ selfPeer: msg.peer });
+          // Another tab of this browser renamed us.
+          if (msg.peer.name !== me.name || msg.peer.color !== me.color) setMe(msg.peer.name, msg.peer.color);
+        } else set((s) => ({ peers: { ...s.peers, [msg.peer.connectionId]: msg.peer } }));
         break;
       case "leave":
         dropCursor(msg.connectionId);
@@ -323,6 +336,12 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
         for (const resolve of backupWaiters.get(msg.day) ?? []) resolve(msg.board);
         backupWaiters.delete(msg.day);
         break;
+      case "profileRejected": {
+        const was = useBoard.getState().selfPeer;
+        if (was) setMe(was.name, was.color);
+        set({ error: msg.reason });
+        break;
+      }
       case "lockDenied":
         set({ lockDenied: msg.cardId, error: `${msg.by} is moving this card` });
         break;

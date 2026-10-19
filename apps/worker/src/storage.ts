@@ -1,5 +1,7 @@
+import { pickName } from "./names";
 import {
   CONVERTED_NOTE_SIZE,
+  PEOPLE_COLORS,
   DEFAULT_PERMISSIONS,
   parsePermissions,
   LIMITS,
@@ -21,8 +23,8 @@ import {
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. */
-export const SCHEMA_VERSION = 4;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. */
+export const SCHEMA_VERSION = 7;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
@@ -43,13 +45,15 @@ interface ColumnRow extends Row {
 
 interface CardRow extends Row {
   id: string;
+  number: number;
   column_id: string;
   position: string;
   title: string;
   description: string;
   color: string | null;
   labels: string;
-  assignee: string;
+  /** JSON array (schema v5); the old single `assignee` column is kept but unused. */
+  assignees: string;
   due_date: string | null;
   updated_at: number;
   updated_by: string;
@@ -58,6 +62,8 @@ interface CardRow extends Row {
 
 interface NoteRow extends Row {
   id: string;
+  number: number;
+  created_at: number;
   x: number;
   y: number;
   w: number;
@@ -87,13 +93,14 @@ const toColumn = (r: ColumnRow): Column => ({
 
 const toCard = (r: CardRow): Card => ({
   id: r.id,
+  number: r.number,
   columnId: r.column_id,
   position: r.position,
   title: r.title,
   description: r.description,
   color: r.color as Color | null,
   labels: JSON.parse(r.labels) as string[],
-  assignee: r.assignee,
+  assignees: JSON.parse(r.assignees) as string[],
   dueDate: r.due_date,
   updatedAt: r.updated_at,
   updatedBy: r.updated_by,
@@ -101,6 +108,8 @@ const toCard = (r: CardRow): Card => ({
 
 const toNote = (r: NoteRow): Note => ({
   id: r.id,
+  number: r.number,
+  createdAt: r.created_at,
   x: r.x,
   y: r.y,
   w: r.w,
@@ -156,6 +165,7 @@ export class BoardStorage {
         );
         CREATE TABLE IF NOT EXISTS cards (
           id TEXT PRIMARY KEY,
+          number INTEGER NOT NULL DEFAULT 0,
           column_id TEXT NOT NULL,
           position TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -163,6 +173,7 @@ export class BoardStorage {
           color TEXT,
           labels TEXT NOT NULL DEFAULT '[]',
           assignee TEXT NOT NULL DEFAULT '',
+          assignees TEXT NOT NULL DEFAULT '[]',
           due_date TEXT,
           updated_at INTEGER NOT NULL,
           updated_by TEXT NOT NULL,
@@ -171,6 +182,8 @@ export class BoardStorage {
         CREATE INDEX IF NOT EXISTS cards_by_column ON cards (column_id, position);
         CREATE TABLE IF NOT EXISTS notes (
           id TEXT PRIMARY KEY,
+          number INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL DEFAULT 0,
           x INTEGER NOT NULL,
           y INTEGER NOT NULL,
           w INTEGER NOT NULL,
@@ -183,6 +196,12 @@ export class BoardStorage {
           deleted_at INTEGER
         );
         CREATE TABLE IF NOT EXISTS backups (day TEXT PRIMARY KEY, at INTEGER NOT NULL, board TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS members (
+          client_id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL,
+          joined_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS ops_log (
           seq INTEGER PRIMARY KEY AUTOINCREMENT,
           op TEXT NOT NULL,
@@ -190,8 +209,59 @@ export class BoardStorage {
           at INTEGER NOT NULL
         );
       `);
+      // v5: multiple assignees. Boards created earlier get the column and keep their single assignee.
+      if (this.addColumn("cards", "assignees", "TEXT NOT NULL DEFAULT '[]'")) {
+        this.sql.exec("UPDATE cards SET assignees = json_array(assignee) WHERE assignee != ''");
+      }
+      // v6: reference numbers (#12) for cards and notes, and note creation times.
+      this.addColumn("cards", "number", "INTEGER NOT NULL DEFAULT 0");
+      this.addColumn("notes", "number", "INTEGER NOT NULL DEFAULT 0");
+      if (this.addColumn("notes", "created_at", "INTEGER NOT NULL DEFAULT 0")) {
+        this.sql.exec("UPDATE notes SET created_at = updated_at");
+      }
+      this.numberExistingItems();
       this.setMeta("schema_version", String(SCHEMA_VERSION));
     });
+  }
+
+  /** Gives every card and note without a number one, oldest first (cards, then notes). */
+  private numberExistingItems() {
+    for (const table of ["cards", "notes"]) {
+      for (const r of this.sql.exec<{ id: string }>(`SELECT id FROM ${table} WHERE number = 0 ORDER BY rowid`).toArray()) {
+        this.sql.exec(`UPDATE ${table} SET number = ? WHERE id = ?`, this.takeNumber(), r.id);
+      }
+    }
+  }
+
+  /**
+   * The next free reference number. An import may ask to keep an item's
+   * original number; that's honoured if it's free, and the counter moves past it.
+   */
+  private takeNumber(requested?: number): number {
+    let next = Number(this.getMeta("next_number") ?? 1);
+    let n = next;
+    if (requested && requested > 0 && !this.numberTaken(requested)) n = requested;
+    else while (this.numberTaken(n)) n++;
+    next = Math.max(next, n + 1);
+    this.setMeta("next_number", String(next));
+    return n;
+  }
+
+  private numberTaken(n: number): boolean {
+    return (
+      this.sql.exec("SELECT 1 FROM cards WHERE number = ? UNION ALL SELECT 1 FROM notes WHERE number = ?", n, n).toArray().length > 0
+    );
+  }
+
+  /** Adds a column to an existing table if it's missing. Returns true if it was added. */
+  private addColumn(table: string, column: string, definition: string): boolean {
+    const exists = this.sql
+      .exec<{ name: string }>(`SELECT name FROM pragma_table_info('${table}')`)
+      .toArray()
+      .some((c) => c.name === column);
+    if (exists) return false;
+    this.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    return true;
   }
 
   needsMigration(): boolean {
@@ -214,6 +284,51 @@ export class BoardStorage {
         this.sql.exec("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)", newId(), title, position);
       }
     });
+  }
+
+  // ---- members: everyone who has opened the board, with the name they have here ----
+
+  /**
+   * The name and color `clientId` has on this board. First-timers get their
+   * own chosen name if nobody here has it, otherwise a free Marvel name; the
+   * color is whichever is least used. Returning members keep what they had.
+   */
+  joinMember(clientId: string, wanted: { name: string; color: string; custom: boolean }, now: number): { name: string; color: string } {
+    const existing = this.sql
+      .exec<{ name: string; color: string }>("SELECT name, color FROM members WHERE client_id = ?", clientId)
+      .toArray()[0];
+    if (existing) return existing;
+    const taken = new Set(this.sql.exec<{ name: string }>("SELECT name FROM members").toArray().map((m) => m.name.toLowerCase()));
+    const name = wanted.custom && !taken.has(wanted.name.toLowerCase()) ? wanted.name : pickName(taken);
+    const color = wanted.custom ? wanted.color : this.leastUsedColor();
+    this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    return { name, color };
+  }
+
+  /** Renames a member, refusing a name someone else on this board already has. */
+  renameMember(clientId: string, name: string, color: string): { ok: true } | { ok: false; reason: string } {
+    const clash = this.sql
+      .exec("SELECT 1 FROM members WHERE lower(name) = lower(?) AND client_id != ?", name, clientId)
+      .toArray().length;
+    if (clash) return { ok: false, reason: `Someone on this board is already called ${name}` };
+    this.sql.exec(
+      "INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(client_id) DO UPDATE SET name = excluded.name, color = excluded.color",
+      clientId,
+      name,
+      color,
+      Date.now(),
+    );
+    return { ok: true };
+  }
+
+  private leastUsedColor(): string {
+    const counts = new Map(PEOPLE_COLORS.map((c) => [c, 0]));
+    for (const m of this.sql.exec<{ color: string }>("SELECT color FROM members")) {
+      if (counts.has(m.color)) counts.set(m.color, counts.get(m.color)! + 1);
+    }
+    const fewest = Math.min(...counts.values());
+    const options = PEOPLE_COLORS.filter((c) => counts.get(c) === fewest);
+    return options[Math.floor(Math.random() * options.length)];
   }
 
   // ---- host and permissions (issue #12) ----
@@ -410,8 +525,10 @@ export class BoardStorage {
 
   private insertNote(n: Note) {
     this.sql.exec(
-      "INSERT INTO notes (id, x, y, w, h, z, color, text, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO notes (id, number, created_at, x, y, w, h, z, color, text, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       n.id,
+      n.number,
+      n.createdAt,
       n.x,
       n.y,
       n.w,
@@ -543,16 +660,18 @@ export class BoardStorage {
         this.liveColumn(op.columnId);
         this.checkCardLimit();
         const position = this.freePosition("cards", op.position, op.id, op.columnId);
+        const number = this.takeNumber(op.number);
         this.sql.exec(
-          "INSERT INTO cards (id, column_id, position, title, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cards (id, number, column_id, position, title, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
           op.id,
+          number,
           op.columnId,
           position,
           op.title,
           now,
           actor,
         );
-        return { ...op, position };
+        return { ...op, position, number };
       }
 
       case "card.update":
@@ -587,8 +706,9 @@ export class BoardStorage {
         if (this.noteRow(op.id)) reject("Note already exists");
         this.checkNoteLimit();
         const z = this.topZ();
-        this.insertNote({ ...op, z, updatedAt: now, updatedBy: actor });
-        return { ...op, z };
+        const number = this.takeNumber(op.number);
+        this.insertNote({ ...op, number, z, createdAt: now, updatedAt: now, updatedBy: actor });
+        return { ...op, z, number };
       }
 
       case "note.update":
@@ -635,10 +755,12 @@ export class BoardStorage {
         const { title, description } = noteToCardFields(note.text);
         // Converted, not deleted: remove the note outright so the trash can't offer a duplicate.
         this.sql.exec("DELETE FROM notes WHERE id = ?", op.id);
+        const number = this.takeNumber();
         this.sql.exec(
-          `INSERT INTO cards (id, column_id, position, title, description, color, updated_at, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO cards (id, number, column_id, position, title, description, color, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           op.cardId,
+          number,
           op.columnId,
           position,
           title,
@@ -647,7 +769,7 @@ export class BoardStorage {
           now,
           actor,
         );
-        return { ...op, position };
+        return { ...op, position, number };
       }
 
       case "card.toNote": {
@@ -656,8 +778,11 @@ export class BoardStorage {
         this.checkNoteLimit();
         const z = this.topZ();
         this.sql.exec("DELETE FROM cards WHERE id = ?", op.id);
+        const number = this.takeNumber();
         this.insertNote({
           id: op.noteId,
+          number,
+          createdAt: now,
           x: op.x,
           y: op.y,
           ...CONVERTED_NOTE_SIZE,
@@ -667,7 +792,7 @@ export class BoardStorage {
           updatedAt: now,
           updatedBy: actor,
         });
-        return { ...op, z };
+        return { ...op, z, number };
       }
     }
   }
@@ -704,7 +829,7 @@ export class BoardStorage {
     if (patch.description !== undefined) sets.push("description = ?"), args.push(patch.description);
     if (patch.color !== undefined) sets.push("color = ?"), args.push(patch.color);
     if (patch.labels !== undefined) sets.push("labels = ?"), args.push(JSON.stringify(patch.labels));
-    if (patch.assignee !== undefined) sets.push("assignee = ?"), args.push(patch.assignee);
+    if (patch.assignees !== undefined) sets.push("assignees = ?"), args.push(JSON.stringify(patch.assignees));
     if (patch.dueDate !== undefined) sets.push("due_date = ?"), args.push(patch.dueDate);
     this.sql.exec(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
   }

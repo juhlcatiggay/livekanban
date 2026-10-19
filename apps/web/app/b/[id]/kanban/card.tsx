@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Card, Peer } from "@livekanban/protocol";
+import { AssigneeAvatars } from "./assignees";
 import { COLOR_STYLES } from "./colors";
 
 const dueFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -16,8 +17,11 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
         lifted ? "rotate-2 shadow-lg ring-2 ring-teal-500" : ""
       }`}
     >
-      {card.color && <span className={`absolute inset-y-0 left-0 w-1 ${COLOR_STYLES[card.color].stripe}`} />}
-      <p className="break-words font-medium">{card.title}</p>
+      {card.color && <span className={`absolute inset-x-0 top-0 h-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words font-medium">{card.title}</p>
+        {card.number > 0 && <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">#{card.number}</span>}
+      </div>
       {card.labels.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1">
           {card.labels.map((l) => (
@@ -27,9 +31,9 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
           ))}
         </ul>
       )}
-      {(card.assignee || card.dueDate || card.description) && (
+      {(card.assignees.length > 0 || card.dueDate || card.description) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-stone-500">
-          {card.assignee && <span className="truncate">@{card.assignee}</span>}
+          <AssigneeAvatars names={card.assignees} />
           {card.dueDate && (
             <span className={overdue ? "font-medium text-red-600 dark:text-red-400" : ""}>
               Due {dueFormat.format(new Date(`${card.dueDate}T00:00:00Z`))}

@@ -54,7 +54,7 @@ async function join(boardId, name) {
       }
     }),
   );
-  socket.send(JSON.stringify({ t: "hello", clientId: name, name, color: "#0d9488", lastSeq: 0 }));
+  socket.send(JSON.stringify({ t: "hello", clientId: name, name, color: "#0d9488", custom: true, lastSeq: 0 }));
   await welcome;
   return socket;
 }

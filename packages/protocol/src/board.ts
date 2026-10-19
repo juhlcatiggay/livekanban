@@ -13,7 +13,9 @@ export const LIMITS = {
   description: 10_000,
   labels: 10,
   label: 30,
+  /** Per assignee name. */
   assignee: 60,
+  assignees: 10,
   wipLimit: 999,
 } as const;
 
@@ -28,6 +30,12 @@ export interface Column {
 
 export interface Card {
   id: string;
+  /**
+   * Board-wide reference number shown as #12 and used in #12 mentions. Cards
+   * and notes share one counter, so a number names exactly one item. Assigned
+   * by the room; 0 until the room confirms a new item.
+   */
+  number: number;
   columnId: string;
   position: string;
   title: string;
@@ -35,7 +43,8 @@ export interface Card {
   description: string;
   color: Color | null;
   labels: string[];
-  assignee: string;
+  /** Free-text names, deduplicated, in the order they were added. */
+  assignees: string[];
   /** ISO date, YYYY-MM-DD. */
   dueDate: string | null;
   updatedAt: number;
@@ -49,6 +58,10 @@ export const NOTE_SIZE = { min: 120, max: 640, defaultW: 220, defaultH: 180 } as
 /** A sticky note on the bulletin canvas. */
 export interface Note {
   id: string;
+  /** Board-wide reference number (see Card.number). */
+  number: number;
+  /** When the note was created; the card-stack layout lists newest first. */
+  createdAt: number;
   /** Top-left corner in canvas pixels. */
   x: number;
   y: number;
@@ -77,7 +90,7 @@ export interface BoardData {
 }
 
 export type ColumnPatch = Partial<Pick<Column, "title" | "color" | "wipLimit">>;
-export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignee" | "dueDate">>;
+export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignees" | "dueDate">>;
 export type NotePatch = Partial<Pick<Note, "text" | "color" | "w" | "h">>;
 
 export type Op =
@@ -88,14 +101,15 @@ export type Op =
   | { kind: "column.delete"; id: string }
   /** The room fills `column` and `cards` from storage; clients send only the id. */
   | { kind: "column.restore"; id: string; column?: Column; cards?: Card[] }
-  | { kind: "card.create"; id: string; columnId: string; position: string; title: string }
+  /** `number` is assigned by the room (or kept from an import); clients omit it. */
+  | { kind: "card.create"; id: string; columnId: string; position: string; title: string; number?: number }
   | { kind: "card.update"; id: string; patch: CardPatch }
   | { kind: "card.move"; id: string; columnId: string; position: string }
   | { kind: "card.delete"; id: string }
   /** The room fills `card` from storage; clients send only the id. */
   | { kind: "card.restore"; id: string; card?: Card }
   /** `z` is assigned by the room (top of the stack); clients may omit it. */
-  | { kind: "note.create"; id: string; x: number; y: number; w: number; h: number; color: Color; text: string; z?: number }
+  | { kind: "note.create"; id: string; x: number; y: number; w: number; h: number; color: Color; text: string; z?: number; number?: number }
   | { kind: "note.update"; id: string; patch: NotePatch }
   /** Moving a note also brings it to the top; the room assigns `z`. */
   | { kind: "note.move"; id: string; x: number; y: number; z?: number }
@@ -105,9 +119,9 @@ export type Op =
   /** Pins a note as the kanban tab's announcement banner (null unpins). */
   | { kind: "board.pin"; noteId: string | null }
   /** Replaces a note with a card made from its text (see noteToCardFields). */
-  | { kind: "note.toCard"; id: string; cardId: string; columnId: string; position: string }
+  | { kind: "note.toCard"; id: string; cardId: string; columnId: string; position: string; number?: number }
   /** Replaces a card with a note made from its title and description (see cardToNoteText). */
-  | { kind: "card.toNote"; id: string; noteId: string; x: number; y: number; z?: number }
+  | { kind: "card.toNote"; id: string; noteId: string; x: number; y: number; z?: number; number?: number }
   /** Host only: what everyone else may change. */
   | { kind: "board.permissions"; permissions: Permissions };
 
@@ -149,6 +163,17 @@ export function cardToNoteText(card: Pick<Card, "title" | "description">): strin
 
 /** Default size for a note made from a card. */
 export const CONVERTED_NOTE_SIZE = { w: 260, h: 200 } as const;
+
+/** Matches a #12 mention: not inside a word, URL fragment or HTML entity, and not a "# Heading". */
+export const MENTION_RE = /(?<![\w&#/])#(\d{1,6})\b/g;
+
+/** The card or note a #number refers to, if any. */
+export function findByNumber(board: Pick<BoardData, "cards" | "notes">, number: number): { kind: "card"; card: Card } | { kind: "note"; note: Note } | null {
+  if (!number) return null;
+  for (const card of Object.values(board.cards)) if (card.number === number) return { kind: "card", card };
+  for (const note of Object.values(board.notes)) if (note.number === number) return { kind: "note", note };
+  return null;
+}
 
 export function topZ(board: Pick<BoardData, "notes">): number {
   let z = 0;
@@ -241,13 +266,14 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
           ...board.cards,
           [op.id]: {
             id: op.id,
+            number: op.number ?? 0,
             columnId: op.columnId,
             position: op.position,
             title: op.title,
             description: "",
             color: null,
             labels: [],
-            assignee: "",
+            assignees: [],
             dueDate: null,
             updatedAt: meta.at,
             updatedBy: meta.by,
@@ -287,7 +313,14 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
     case "note.create": {
       if (board.notes[op.id]) return board;
       const { kind: _, ...fields } = op;
-      const note: Note = { ...fields, z: op.z ?? topZ(board), updatedAt: meta.at, updatedBy: meta.by };
+      const note: Note = {
+        ...fields,
+        number: op.number ?? 0,
+        z: op.z ?? topZ(board),
+        createdAt: meta.at,
+        updatedAt: meta.at,
+        updatedBy: meta.by,
+      };
       return { ...board, notes: { ...board.notes, [op.id]: note } };
     }
 
@@ -324,12 +357,13 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
       delete notes[op.id];
       const card: Card = {
         id: op.cardId,
+        number: op.number ?? 0,
         columnId: op.columnId,
         position: op.position,
         ...noteToCardFields(note.text),
         color: note.color,
         labels: [],
-        assignee: "",
+        assignees: [],
         dueDate: null,
         updatedAt: meta.at,
         updatedBy: meta.by,
@@ -347,6 +381,8 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
       delete cards[op.id];
       const note: Note = {
         id: op.noteId,
+        number: op.number ?? 0,
+        createdAt: meta.at,
         x: op.x,
         y: op.y,
         ...CONVERTED_NOTE_SIZE,

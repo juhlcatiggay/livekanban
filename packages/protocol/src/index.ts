@@ -50,14 +50,29 @@ export interface BackupInfo {
   at: number;
 }
 
+/** Cursor and avatar colors: saturated enough to read on light and dark backgrounds. */
+export const PEOPLE_COLORS = ["#0d9488", "#d97706", "#e11d48", "#4f46e5", "#65a30d", "#9333ea", "#0284c7", "#c2410c", "#db2777", "#059669"];
+
+/** This browser's identity, kept in localStorage. Never shared with other people. */
 export interface Identity {
   clientId: string;
   name: string;
   color: string;
+  /**
+   * True once the person has chosen their own name and color. Otherwise each
+   * board's room assigns a name (unique on that board) and keeps it for them.
+   */
+  custom?: boolean;
 }
 
-/** A connected visitor. Lives in the room's per-connection state, never in SQLite. */
-export interface Peer extends Identity {
+/**
+ * A connected visitor as everyone sees them. Lives in the room's
+ * per-connection state, never in SQLite. Has no client ID, so nobody can copy
+ * someone else's ID to take over their name.
+ */
+export interface Peer {
+  name: string;
+  color: string;
   connectionId: string;
   /** Card or column id whose text this peer is editing. */
   editing: string | null;
@@ -97,7 +112,7 @@ export const CURSOR_TICK_MS = 16;
 
 export type ClientMessage =
   /** `hostKey`, if this browser created the board (or opened a host link), makes it the host. */
-  | { t: "hello"; clientId: string; name: string; color: string; lastSeq: number; hostKey?: string }
+  | { t: "hello"; clientId: string; name: string; color: string; custom: boolean; lastSeq: number; hostKey?: string }
   | { t: "ping"; at: number }
   /** `cid` is the client's id for this op, echoed back in ack/reject. */
   | { t: "op"; cid: string; op: Op }
@@ -133,6 +148,8 @@ export type ServerMessage =
   | { t: "trash"; items: TrashItem[]; backups: BackupInfo[] }
   /** A daily backup's board, or null if it no longer exists. */
   | { t: "backup"; day: string; board: BoardData | null }
+  /** Your rename was refused (e.g. someone on this board already has that name). */
+  | { t: "profileRejected"; reason: string }
   /** Someone else already holds the card you tried to pick up. */
   | { t: "lockDenied"; cardId: string; by: string }
   | CursorBroadcast
@@ -199,7 +216,7 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
       const profile = parseProfile(m.name, m.color);
       if (!profile || !isShortString(m.clientId, 64) || !Number.isSafeInteger(m.lastSeq)) return null;
       const hostKey = typeof m.hostKey === "string" && m.hostKey.length <= 64 ? m.hostKey : undefined;
-      return { t: "hello", clientId: m.clientId, ...profile, lastSeq: m.lastSeq as number, hostKey };
+      return { t: "hello", clientId: m.clientId, ...profile, custom: m.custom === true, lastSeq: m.lastSeq as number, hostKey };
     }
     case "ping":
       return Number.isFinite(m.at) ? { t: "ping", at: m.at as number } : null;

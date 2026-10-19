@@ -3,7 +3,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 async function visitor(browser: Browser, name: string, viewport = { width: 1400, height: 900 }) {
   const context = await browser.newContext({ viewport });
   await context.addInitScript(
-    ([n]) => localStorage.setItem("lk:identity", JSON.stringify({ clientId: `test-${n}`, name: n, color: "#4f46e5" })),
+    ([n]) => localStorage.setItem("lk:identity", JSON.stringify({ clientId: `test-${n}`, name: n, color: "#4f46e5", custom: true })),
     [name],
   );
   return context.newPage();
@@ -145,7 +145,7 @@ test("a pinned note shows as an announcement on the kanban tab", async ({ browse
   await expect(ada.getByText("Pinned", { exact: true })).toHaveCount(0);
 });
 
-test("notes become cards and cards become notes", async ({ browser }) => {
+test("a note becomes a card in a chosen column", async ({ browser }) => {
   const ada = await visitor(browser, "Ada");
   await createBoard(ada);
   await openBulletin(ada);
@@ -161,13 +161,10 @@ test("notes become cards and cards become notes", async ({ browser }) => {
   await ada.getByRole("tab", { name: "Kanban" }).click();
   const doing = ada.getByRole("region", { name: "Column Doing" });
   await doing.getByRole("button", { name: /^Ship v1\. Press Enter/ }).click();
-  await ada.getByRole("dialog").getByRole("tab", { name: "write" }).click();
+  await ada.getByRole("dialog").getByRole("button", { name: "Edit" }).click();
   await expect(ada.getByRole("dialog").getByLabel("Description")).toHaveValue("Ship v1\nwith release notes");
-
-  await ada.getByRole("dialog").getByRole("button", { name: "Move to bulletin" }).click();
-  await expect(doing.getByRole("button", { name: /^Ship v1\. Press Enter/ })).toHaveCount(0);
-  await ada.getByRole("tab", { name: /^Bulletin/ }).click();
-  await expect(note(ada, "Ship v1")).toContainText("with release notes");
+  // Cards can no longer be moved to the bulletin.
+  await expect(ada.getByRole("dialog").getByRole("button", { name: "Move to bulletin" })).toHaveCount(0);
 });
 
 test("deleting a note can be undone", async ({ browser }) => {
@@ -178,10 +175,49 @@ test("deleting a note can be undone", async ({ browser }) => {
   await note(ada, "Keep me").hover();
   await note(ada, "Keep me").getByLabel("Note options").click();
   await ada.getByRole("button", { name: "Delete note" }).click();
+  await ada.getByRole("alertdialog", { name: "Delete this note?" }).getByRole("button", { name: "Delete note" }).click();
   await expect(note(ada, "Keep me")).toHaveCount(0);
   await ada.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(note(ada, "Keep me")).toBeVisible();
   await settled(ada);
   await ada.reload();
   await expect(note(ada, "Keep me")).toBeVisible();
+});
+
+test("the bulletin can be a newest-first card stack, and the choice is remembered", async ({ browser }, info) => {
+  const ada = await visitor(browser, "Ada");
+  await createBoard(ada);
+  await openBulletin(ada);
+  await addNote(ada, "Older note");
+  await addNote(ada, "Newer note");
+
+  await ada.getByRole("button", { name: "Card stack" }).click();
+  const stack = ada.getByRole("list", { name: "Notes, newest first" });
+  const items = stack.locator(":scope > li");
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText("Newer note");
+  await expect(items.nth(1)).toContainText("Older note");
+  await expect(items.nth(0)).toContainText(/#2.*Created/);
+  await expect(items.nth(1)).toContainText(/#1.*Created/);
+  await expect(ada.getByRole("group", { name: "Zoom" })).toHaveCount(0);
+
+  // Editing in place.
+  await items.nth(1).getByRole("button", { name: "Edit" }).click();
+  await ada.getByLabel("Note text").fill("Older note, **updated**");
+  await ada.getByLabel("Note text").press("Escape");
+  await expect(items.nth(1).locator("strong")).toHaveText("updated");
+
+  // A new note opens ready to type, at the top.
+  await ada.getByRole("button", { name: "+ Add note" }).click();
+  await ada.getByLabel("Note text").fill("Newest note");
+  await ada.getByLabel("Note text").press("Escape");
+  await expect(items.nth(0)).toContainText("Newest note");
+  await ada.screenshot({ path: info.outputPath("card-stack.png") });
+
+  // The layout is per viewer and survives a reload; switching back shows the canvas.
+  await ada.reload();
+  await expect(ada.getByRole("list", { name: "Notes, newest first" })).toBeVisible();
+  await ada.getByRole("button", { name: "Sticky notes" }).click();
+  await expect(ada.getByLabel("Bulletin canvas")).toBeVisible();
+  await expect(note(ada, "Newest note")).toBeVisible();
 });

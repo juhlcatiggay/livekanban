@@ -1,21 +1,16 @@
-import type { Identity } from "@livekanban/protocol";
+import { PEOPLE_COLORS, type Identity } from "@livekanban/protocol";
 
 const KEY = "lk:identity";
 
-const ADJECTIVES = ["Teal", "Amber", "Coral", "Indigo", "Olive", "Plum", "Saffron", "Slate", "Ruby", "Jade", "Copper", "Azure"];
-const ANIMALS = ["Otter", "Fox", "Heron", "Lynx", "Panda", "Gecko", "Owl", "Badger", "Koala", "Marten", "Puffin", "Ibex"];
-/** Cursor and avatar colors: saturated enough to read on light and dark backgrounds. */
-export const IDENTITY_COLORS = ["#0d9488", "#d97706", "#e11d48", "#4f46e5", "#65a30d", "#9333ea", "#0284c7", "#c2410c", "#db2777", "#059669"];
-
-function pick<T>(items: readonly T[]): T {
-  return items[crypto.getRandomValues(new Uint32Array(1))[0] % items.length];
-}
-
+/**
+ * A fresh browser identity. The name is only a placeholder until the room
+ * answers: each board gives its members a unique Marvel name and keeps it.
+ */
 function randomIdentity(): Identity {
   return {
     clientId: crypto.randomUUID(),
-    name: `${pick(ADJECTIVES)} ${pick(ANIMALS)}`,
-    color: pick(IDENTITY_COLORS),
+    name: "Guest",
+    color: PEOPLE_COLORS[crypto.getRandomValues(new Uint32Array(1))[0] % PEOPLE_COLORS.length],
   };
 }
 
