@@ -146,7 +146,7 @@ test("deleting a column can be undone", async ({ page }) => {
   await page.getByRole("button", { name: "Delete column" }).click();
   await expect(column(page, "Doing")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(card(column(page, "Doing"), "Keep me")).toBeVisible();
   await settled(page);
   await page.reload();
