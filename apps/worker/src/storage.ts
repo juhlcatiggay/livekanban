@@ -14,10 +14,16 @@ import {
   type Note,
   type NotePatch,
   type Op,
+  type BackupInfo,
+  type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. */
-export const SCHEMA_VERSION = 3;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. */
+export const SCHEMA_VERSION = 4;
+/** Daily backups kept (the plan's "7 days of snapshots"). */
+export const BACKUPS_KEPT = 7;
+/** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
+const MAX_BACKUP_CHARS = 1_900_000;
 /** ops_log keeps this many recent ops for reconnect replay. */
 export const OPS_KEPT = 1000;
 
@@ -173,6 +179,7 @@ export class BoardStorage {
           updated_by TEXT NOT NULL,
           deleted_at INTEGER
         );
+        CREATE TABLE IF NOT EXISTS backups (day TEXT PRIMARY KEY, at INTEGER NOT NULL, board TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS ops_log (
           seq INTEGER PRIMARY KEY AUTOINCREMENT,
           op TEXT NOT NULL,
@@ -188,19 +195,112 @@ export class BoardStorage {
     return Number(this.getMeta("schema_version") ?? 0) < SCHEMA_VERSION;
   }
 
-  /** Initializes a brand-new board with starter columns. */
-  init(now: number, newId: () => string) {
+  /** Initializes a brand-new board, with starter columns unless it's about to be filled by an import. */
+  init(now: number, newId: () => string, { starterColumns = true } = {}) {
     this.migrate();
     this.transaction(() => {
       this.setMeta("created_at", String(now));
       this.setMeta("last_activity_at", String(now));
       this.setMeta("title", "Untitled board");
+      if (!starterColumns) return;
       let position: string | null = null;
       for (const title of ["To do", "Doing", "Done"]) {
         position = positionBetween(position, null);
         this.sql.exec("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)", newId(), title, position);
       }
     });
+  }
+
+  // ---- activity, trash and backups (driven by the room's alarm) ----
+
+  lastActivityAt(): number {
+    return Number(this.getMeta("last_activity_at"));
+  }
+
+  touch(now: number) {
+    this.setMeta("last_activity_at", String(now));
+  }
+
+  /** Deleted items still restorable, newest first. Cards inside a deleted column come back with it. */
+  trash(): TrashItem[] {
+    const items: TrashItem[] = [];
+    for (const r of this.sql.exec<{ id: string; title: string; deleted_at: number; n: number }>(
+      `SELECT c.id, c.title, c.deleted_at, (SELECT COUNT(*) FROM cards WHERE column_id = c.id AND deleted_at IS NULL) AS n
+       FROM columns c WHERE c.deleted_at IS NOT NULL`,
+    )) {
+      items.push({ kind: "column", id: r.id, label: r.title, deletedAt: r.deleted_at, cardCount: r.n });
+    }
+    for (const r of this.sql.exec<{ id: string; title: string; deleted_at: number }>(
+      `SELECT cards.id, cards.title, cards.deleted_at FROM cards JOIN columns ON columns.id = cards.column_id
+       WHERE cards.deleted_at IS NOT NULL AND columns.deleted_at IS NULL`,
+    )) {
+      items.push({ kind: "card", id: r.id, label: r.title, deletedAt: r.deleted_at });
+    }
+    for (const r of this.sql.exec<{ id: string; text: string; deleted_at: number }>(
+      "SELECT id, text, deleted_at FROM notes WHERE deleted_at IS NOT NULL",
+    )) {
+      const label = r.text.trim().split("\n")[0].slice(0, 80) || "Empty note";
+      items.push({ kind: "note", id: r.id, label, deletedAt: r.deleted_at });
+    }
+    return items.sort((a, b) => b.deletedAt - a.deletedAt);
+  }
+
+  oldestDeletedAt(): number | null {
+    return this.sql
+      .exec<{ t: number | null }>(
+        `SELECT MIN(t) AS t FROM (
+           SELECT MIN(deleted_at) AS t FROM columns UNION ALL
+           SELECT MIN(deleted_at) FROM cards UNION ALL
+           SELECT MIN(deleted_at) FROM notes)`,
+      )
+      .one().t;
+  }
+
+  /** Permanently removes everything deleted before `before`, including cards of purged columns. */
+  purgeTrash(before: number) {
+    this.transaction(() => {
+      this.sql.exec(
+        "DELETE FROM cards WHERE column_id IN (SELECT id FROM columns WHERE deleted_at IS NOT NULL AND deleted_at < ?)",
+        before,
+      );
+      for (const table of ["cards", "columns", "notes"]) {
+        this.sql.exec(`DELETE FROM ${table} WHERE deleted_at IS NOT NULL AND deleted_at < ?`, before);
+      }
+    });
+  }
+
+  lastBackupAt(): number {
+    return Number(this.getMeta("last_backup_at") ?? 0);
+  }
+
+  /** Saves today's (UTC) backup of the live board and keeps only the newest BACKUPS_KEPT. */
+  takeBackup(now: number): boolean {
+    const json = JSON.stringify(this.snapshot());
+    if (json.length > MAX_BACKUP_CHARS) return false;
+    const day = new Date(now).toISOString().slice(0, 10);
+    this.transaction(() => {
+      this.sql.exec(
+        "INSERT INTO backups (day, at, board) VALUES (?, ?, ?) ON CONFLICT(day) DO UPDATE SET at = excluded.at, board = excluded.board",
+        day,
+        now,
+        json,
+      );
+      this.sql.exec(
+        "DELETE FROM backups WHERE day NOT IN (SELECT day FROM backups ORDER BY day DESC LIMIT ?)",
+        BACKUPS_KEPT,
+      );
+      this.setMeta("last_backup_at", String(now));
+    });
+    return true;
+  }
+
+  backups(): BackupInfo[] {
+    return this.sql.exec<{ day: string; at: number }>("SELECT day, at FROM backups ORDER BY day DESC").toArray();
+  }
+
+  backup(day: string): BoardData | null {
+    const row = this.sql.exec<{ board: string }>("SELECT board FROM backups WHERE day = ?", day).toArray()[0];
+    return row ? (JSON.parse(row.board) as BoardData) : null;
   }
 
   // ---- reads ----
@@ -496,7 +596,8 @@ export class BoardStorage {
         this.checkCardLimit();
         const position = this.freePosition("cards", op.position, op.cardId, op.columnId);
         const { title, description } = noteToCardFields(note.text);
-        this.sql.exec("UPDATE notes SET deleted_at = ? WHERE id = ?", now, op.id);
+        // Converted, not deleted: remove the note outright so the trash can't offer a duplicate.
+        this.sql.exec("DELETE FROM notes WHERE id = ?", op.id);
         this.sql.exec(
           `INSERT INTO cards (id, column_id, position, title, description, color, updated_at, updated_by)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -517,7 +618,7 @@ export class BoardStorage {
         if (this.noteRow(op.noteId)) reject("Note already exists");
         this.checkNoteLimit();
         const z = this.topZ();
-        this.sql.exec("UPDATE cards SET deleted_at = ? WHERE id = ?", now, op.id);
+        this.sql.exec("DELETE FROM cards WHERE id = ?", op.id);
         this.insertNote({
           id: op.noteId,
           x: op.x,
