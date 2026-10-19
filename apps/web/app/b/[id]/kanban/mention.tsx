@@ -1,33 +1,8 @@
 "use client";
 
-import type { Root } from "mdast";
-import { findAndReplace } from "mdast-util-find-and-replace";
-import { MENTION_RE, findByNumber } from "@livekanban/protocol";
+import { findByNumber } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { jumpTo } from "@/lib/jump";
-
-/** Fragment used for mention links in the Markdown tree; the link component swaps them for <Mention>. */
-export const MENTION_HREF_PREFIX = "#lk-item-";
-
-/** remark plugin: "#12" in text becomes a link to item 12 (never inside code or existing links). */
-export function remarkMentions() {
-  return (tree: Root) => {
-    findAndReplace(
-      tree,
-      [
-        [
-          new RegExp(MENTION_RE.source, "g"),
-          (value: string, digits: string) => ({
-            type: "link",
-            url: `${MENTION_HREF_PREFIX}${digits}`,
-            children: [{ type: "text", value }],
-          }),
-        ],
-      ],
-      { ignore: ["link", "linkReference"] },
-    );
-  };
-}
 
 /**
  * A #12 reference to a card or note on this board. Clicking it glides to the
@@ -50,7 +25,7 @@ export function Mention({ number }: { number: number }) {
 
   return (
     <a
-      href={`${MENTION_HREF_PREFIX}${number}`}
+      href={`#${number}`}
       className="md-mention"
       title={`${target.kind === "card" ? "Card" : "Note"} #${number}: ${label}`}
       onClick={(e) => {

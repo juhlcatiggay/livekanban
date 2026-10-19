@@ -3,6 +3,7 @@
 import type { Column, Note, Peer } from "@livekanban/protocol";
 import { EditingBadge } from "../kanban/card";
 import { Markdown } from "../kanban/markdown";
+import { MarkdownEditor } from "../kanban/markdown-editor";
 import { NoteMenu, PAPER, useNoteEditor } from "./note";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -113,7 +114,7 @@ function StackNote({
       {editor && <EditingBadge peers={editors} />}
       <div className="px-4 py-3">
         {textEditor.editing ? (
-          <textarea {...textEditor.textareaProps} rows={8} className="w-full resize-y rounded-md border border-black/15 bg-white/60 p-2 text-sm text-stone-900 outline-none focus:border-teal-600" />
+          <MarkdownEditor {...textEditor.editorProps} rows={8} className="w-full resize-y rounded-md border border-black/15 bg-white/60 p-2 text-sm text-stone-900 outline-none focus:border-teal-600" />
         ) : note.text ? (
           <div onDoubleClick={textEditor.open}>
             <Markdown text={note.text} onPaper />
