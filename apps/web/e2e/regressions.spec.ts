@@ -56,8 +56,9 @@ test("#13 a single Enter in a description is a line break", async ({ page }) => 
   await todo.getByLabel("New card title").press("Enter");
   await todo.getByLabel("New card title").press("Escape");
   await page.getByRole("button", { name: /^Lines\. Press Enter/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Add description" }).click();
   await page.getByRole("dialog").getByLabel("Description").fill("first line\nsecond line");
-  await page.getByRole("dialog").getByRole("tab", { name: "preview" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Done" }).click();
 
   const preview = page.getByRole("dialog").getByRole("region", { name: "Description preview" });
   await expect(preview.locator("br")).toHaveCount(1);

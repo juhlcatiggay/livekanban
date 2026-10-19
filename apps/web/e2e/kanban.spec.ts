@@ -52,7 +52,9 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   await addCard(page, "To do", "Write spec");
   await card(page, "Write spec").click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Add description" }).click();
   await dialog.getByLabel("Description").fill("## Scope\nEverything in phase 2");
+  await dialog.getByRole("button", { name: "Done" }).click();
   await dialog.getByLabel("Assignee").fill("Juhl");
   await dialog.getByLabel("Labels").fill("docs, urgent");
   await dialog.getByLabel("Due date").fill("2026-11-30");
@@ -76,7 +78,7 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
 
   await saved.click();
   await expect(page.getByRole("dialog").getByRole("region", { name: "Description preview" }).getByRole("heading", { name: "Scope" })).toBeVisible();
-  await page.getByRole("dialog").getByRole("tab", { name: "write" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Edit" }).click();
   await expect(page.getByRole("dialog").getByLabel("Description")).toHaveValue("## Scope\nEverything in phase 2");
 });
 

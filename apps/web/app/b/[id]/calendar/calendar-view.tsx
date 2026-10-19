@@ -150,9 +150,9 @@ export function CalendarView({ board }: { board: BoardData }) {
                     onDragEnd={() => setDropTarget(null)}
                     onClick={() => setOpenCardId(card.id)}
                     aria-label={`${card.title} (${board.columns[card.columnId]?.title ?? ""})${canReschedule ? ". Drag to change its due date." : ""}`}
-                    className="relative w-full cursor-grab overflow-hidden rounded border border-stone-200 bg-white py-0.5 pl-2 pr-1 text-left text-xs text-stone-900 shadow-sm hover:border-stone-400 active:cursor-grabbing dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                    className="relative w-full cursor-grab overflow-hidden rounded border border-stone-200 bg-white px-1.5 pb-0.5 pt-1.5 text-left text-xs text-stone-900 shadow-sm hover:border-stone-400 active:cursor-grabbing dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                   >
-                    <span className={`absolute inset-y-0 left-0 w-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-stone-300 dark:bg-stone-600"}`} />
+                    <span className={`absolute inset-x-0 top-0 h-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-stone-300 dark:bg-stone-600"}`} />
                     <span className="block truncate font-medium">{card.title}</span>
                     <span className="block truncate text-[10px] text-stone-500">{board.columns[card.columnId]?.title}</span>
                   </button>

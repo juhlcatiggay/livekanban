@@ -16,7 +16,7 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
         lifted ? "rotate-2 shadow-lg ring-2 ring-teal-500" : ""
       }`}
     >
-      {card.color && <span className={`absolute inset-y-0 left-0 w-1 ${COLOR_STYLES[card.color].stripe}`} />}
+      {card.color && <span className={`absolute inset-x-0 top-0 h-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
       <p className="break-words font-medium">{card.title}</p>
       {card.labels.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1">

@@ -145,7 +145,7 @@ test("a pinned note shows as an announcement on the kanban tab", async ({ browse
   await expect(ada.getByText("Pinned", { exact: true })).toHaveCount(0);
 });
 
-test("notes become cards and cards become notes", async ({ browser }) => {
+test("a note becomes a card in a chosen column", async ({ browser }) => {
   const ada = await visitor(browser, "Ada");
   await createBoard(ada);
   await openBulletin(ada);
@@ -161,13 +161,10 @@ test("notes become cards and cards become notes", async ({ browser }) => {
   await ada.getByRole("tab", { name: "Kanban" }).click();
   const doing = ada.getByRole("region", { name: "Column Doing" });
   await doing.getByRole("button", { name: /^Ship v1\. Press Enter/ }).click();
-  await ada.getByRole("dialog").getByRole("tab", { name: "write" }).click();
+  await ada.getByRole("dialog").getByRole("button", { name: "Edit" }).click();
   await expect(ada.getByRole("dialog").getByLabel("Description")).toHaveValue("Ship v1\nwith release notes");
-
-  await ada.getByRole("dialog").getByRole("button", { name: "Move to bulletin" }).click();
-  await expect(doing.getByRole("button", { name: /^Ship v1\. Press Enter/ })).toHaveCount(0);
-  await ada.getByRole("tab", { name: /^Bulletin/ }).click();
-  await expect(note(ada, "Ship v1")).toContainText("with release notes");
+  // Cards can no longer be moved to the bulletin.
+  await expect(ada.getByRole("dialog").getByRole("button", { name: "Move to bulletin" })).toHaveCount(0);
 });
 
 test("deleting a note can be undone", async ({ browser }) => {
