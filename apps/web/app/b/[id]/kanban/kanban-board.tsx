@@ -35,6 +35,7 @@ import { confirmAction } from "@/lib/confirm";
 import { SHAKE_MS, clearJump, revealAndShake, useJump } from "@/lib/jump";
 import { indexPresence } from "@/lib/presence-index";
 import { clearSelection, selectCards, useSelection } from "@/lib/selection";
+import { isFiltering, matchesFilter, useCardFilter } from "@/lib/card-filter";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
 import { CardFace } from "./card";
@@ -241,6 +242,9 @@ export function KanbanBoard({ board }: { board: BoardData }) {
   const offerUndo = useUndo((s) => s.offer);
 
   const order = dragOrder ?? baseOrder;
+  // Search and filters hide cards; drags still work on the full order, so hidden cards keep their places.
+  const filter = useCardFilter();
+  const filtering = isFiltering(filter);
 
   /**
    * Keyboard moves are exact rather than geometric: cards swap with the
@@ -442,7 +446,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
               <SortableColumn
                 key={column.id}
                 column={column}
-                cards={(order[column.id] ?? []).map((id) => board.cards[id]).filter(Boolean)}
+                cards={(order[column.id] ?? []).map((id) => board.cards[id]).filter((c) => c && (!filtering || c.id === activeId || matchesFilter(c, filter)))}
                 presence={presence}
                 can={can}
                 onOpenCard={setOpenCardId}

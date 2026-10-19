@@ -1,6 +1,6 @@
 import { getServerByName, routePartykitRequest } from "partyserver";
 import { nanoid } from "nanoid";
-import { BOARD_ID_RE, MAX_IMPORT_BYTES, importToOps, type Op } from "@livekanban/protocol";
+import { BOARD_ID_RE, LIMITS, MAX_IMPORT_BYTES, PASSWORD, importToOps, parseOp, parsePermissions, type Op } from "@livekanban/protocol";
 import { HOUR_MS } from "./config";
 import { originMatcher } from "./origins";
 
@@ -52,6 +52,10 @@ interface CreateBody {
   turnstileToken?: string;
   /** A board export (see toExport) to restore into the new board. */
   import?: unknown;
+  /** From the create page: the board's name, a password to open it, and what non-hosts may change. */
+  title?: unknown;
+  password?: unknown;
+  permissions?: unknown;
 }
 
 async function createBoard(request: Request, env: Env, cors: HeadersInit): Promise<Response> {
@@ -87,6 +91,23 @@ async function createBoard(request: Request, env: Env, cors: HeadersInit): Promi
     }
   }
 
+  // Board setup from the create page, validated like everything else from a browser.
+  let title: string | undefined;
+  if (body.title !== undefined && body.title !== "") {
+    const op = parseOp({ kind: "board.update", title: body.title });
+    if (op?.kind !== "board.update") return error(400, `The board name must be 1–${LIMITS.title} characters`);
+    title = op.title;
+  }
+  let password: string | undefined;
+  if (body.password !== undefined && body.password !== "") {
+    if (typeof body.password !== "string" || body.password.length < PASSWORD.min || body.password.length > PASSWORD.max) {
+      return error(400, `The password must be ${PASSWORD.min}–${PASSWORD.max} characters`);
+    }
+    password = body.password;
+  }
+  const permissions = body.permissions === undefined ? undefined : parsePermissions(body.permissions);
+  if (permissions === null) return error(400, "Invalid host settings");
+
   let ops: Op[] = [];
   if (body.import !== undefined) {
     const parsed = importToOps(body.import);
@@ -101,7 +122,7 @@ async function createBoard(request: Request, env: Env, cors: HeadersInit): Promi
   const res = await room.fetch(
     new Request("https://room/init", {
       method: "POST",
-      body: JSON.stringify({ ops, hostKey }),
+      body: JSON.stringify({ ops, hostKey, title, permissions, password }),
       headers: { "Content-Type": "application/json" },
     }),
   );

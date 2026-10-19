@@ -1,4 +1,5 @@
 import { pickName } from "./names";
+import type { PasswordRecord } from "./password";
 import {
   CONVERTED_NOTE_SIZE,
   PEOPLE_COLORS,
@@ -21,19 +22,20 @@ import {
   type Note,
   type NotePatch,
   type Op,
+  type OpDetail,
   type BackupInfo,
   type Permissions,
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. 8: cards.start_date, cards.checklist. */
-export const SCHEMA_VERSION = 8;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. 8: cards.start_date, cards.checklist. 9: ops_log.detail (history). */
+export const SCHEMA_VERSION = 9;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
 const MAX_BACKUP_CHARS = 1_900_000;
 /** ops_log keeps this many recent ops for reconnect replay. */
-export const OPS_KEPT = 1000;
+export const OPS_KEPT = 2000;
 
 type Row = Record<string, SqlStorageValue>;
 
@@ -80,6 +82,30 @@ interface NoteRow extends Row {
   updated_at: number;
   updated_by: string;
   deleted_at: number | null;
+}
+
+interface LogRow extends Row {
+  seq: number;
+  op: string;
+  actor_name: string;
+  at: number;
+  detail: string | null;
+}
+
+const toCommitted = (r: LogRow): CommittedOp => {
+  const c: CommittedOp = { seq: r.seq, op: JSON.parse(r.op) as Op, by: r.actor_name, at: r.at };
+  if (r.detail) c.detail = JSON.parse(r.detail) as OpDetail;
+  return c;
+};
+
+/** How a new board starts, from the create page. */
+export interface BoardSetup {
+  /** False when an import is about to fill the board. */
+  starterColumns?: boolean;
+  hostKey?: string;
+  title?: string;
+  permissions?: Permissions;
+  password?: PasswordRecord;
 }
 
 export type CommitResult = { ok: true; committed: CommittedOp } | { ok: false; reason: string };
@@ -216,9 +242,12 @@ export class BoardStorage {
           seq INTEGER PRIMARY KEY AUTOINCREMENT,
           op TEXT NOT NULL,
           actor_name TEXT NOT NULL,
-          at INTEGER NOT NULL
+          at INTEGER NOT NULL,
+          detail TEXT
         );
       `);
+      // v9: what each op changed, for history.
+      this.addColumn("ops_log", "detail", "TEXT");
       // v5: multiple assignees. Boards created earlier get the column and keep their single assignee.
       if (this.addColumn("cards", "assignees", "TEXT NOT NULL DEFAULT '[]'")) {
         this.sql.exec("UPDATE cards SET assignees = json_array(assignee) WHERE assignee != ''");
@@ -282,14 +311,17 @@ export class BoardStorage {
   }
 
   /** Initializes a brand-new board, with starter columns unless it's about to be filled by an import. */
-  init(now: number, newId: () => string, { starterColumns = true, hostKey }: { starterColumns?: boolean; hostKey?: string } = {}) {
+  init(now: number, newId: () => string, options: BoardSetup = {}) {
+    const { starterColumns = true, hostKey, title, permissions, password } = options;
     this.migrate();
     this.transaction(() => {
       this.setMeta("created_at", String(now));
       this.setMeta("last_activity_at", String(now));
-      this.setMeta("title", "Untitled board");
+      this.setMeta("title", title ?? "Untitled board");
       // Kept only in this board's own database, which never leaves the room.
       if (hostKey) this.setMeta("host_key", hostKey);
+      if (permissions) this.setMeta("permissions", JSON.stringify(permissions));
+      if (password) this.setMeta("password", JSON.stringify(password));
       if (!starterColumns) return;
       let position: string | null = null;
       for (const title of ["To do", "Doing", "Done"]) {
@@ -297,6 +329,18 @@ export class BoardStorage {
         this.sql.exec("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)", newId(), title, position);
       }
     });
+  }
+
+  // ---- password (optional, set by the host) ----
+
+  passwordRecord(): PasswordRecord | null {
+    const raw = this.getMeta("password");
+    return raw ? (JSON.parse(raw) as PasswordRecord) : null;
+  }
+
+  setPasswordRecord(record: PasswordRecord | null) {
+    if (record) this.setMeta("password", JSON.stringify(record));
+    else this.sql.exec("DELETE FROM meta WHERE key = 'password'");
   }
 
   // ---- members: everyone who has opened the board, with the name they have here ----
@@ -506,12 +550,79 @@ export class BoardStorage {
     const oldest = this.sql.exec<{ seq: number }>("SELECT MIN(seq) AS seq FROM ops_log").one().seq;
     if (lastSeq < oldest - 1) return null;
     return this.sql
-      .exec<{ seq: number; op: string; actor_name: string; at: number }>(
-        "SELECT seq, op, actor_name, at FROM ops_log WHERE seq > ? ORDER BY seq",
-        lastSeq,
-      )
+      .exec<LogRow>("SELECT seq, op, actor_name, at, detail FROM ops_log WHERE seq > ? ORDER BY seq", lastSeq)
       .toArray()
-      .map((r) => ({ seq: r.seq, op: JSON.parse(r.op) as Op, by: r.actor_name, at: r.at }));
+      .map(toCommitted);
+  }
+
+  /**
+   * History, newest first: up to `limit` ops older than `before`, optionally
+   * only those about one card or note (including conversions to and from it).
+   */
+  history(before: number | undefined, id: string | undefined, limit: number): { entries: CommittedOp[]; more: boolean } {
+    const where = ["seq < ?"];
+    const args: SqlStorageValue[] = [before ?? Number.MAX_SAFE_INTEGER];
+    if (id) {
+      where.push("(json_extract(op, '$.id') = ? OR json_extract(op, '$.cardId') = ? OR json_extract(op, '$.noteId') = ?)");
+      args.push(id, id, id);
+    }
+    const rows = this.sql
+      .exec<LogRow>(`SELECT seq, op, actor_name, at, detail FROM ops_log WHERE ${where.join(" AND ")} ORDER BY seq DESC LIMIT ?`, ...args, limit + 1)
+      .toArray();
+    return { entries: rows.slice(0, limit).map(toCommitted), more: rows.length > limit };
+  }
+
+  /** The names history needs, read before `op` changes them. */
+  private detailFor(op: Op): OpDetail | undefined {
+    const firstLine = (text: string) => (text.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").trim().slice(0, 80);
+    const card = (id: string): OpDetail => {
+      const row = this.cardRow(id);
+      return row ? { card: row.title, column: this.columnRow(row.column_id)?.title } : {};
+    };
+    switch (op.kind) {
+      case "card.create":
+        return { card: op.title, column: this.columnRow(op.columnId)?.title };
+      case "card.update":
+      case "card.move":
+      case "card.delete":
+      case "card.restore":
+      case "card.toNote":
+        return card(op.id);
+      case "checklist.add":
+        return { ...card(op.id), item: op.item.text };
+      case "checklist.update":
+      case "checklist.delete": {
+        const row = this.cardRow(op.id);
+        const items = row ? (JSON.parse(row.checklist) as ChecklistItem[]) : [];
+        return { ...card(op.id), item: items.find((i) => i.id === op.itemId)?.text };
+      }
+      case "column.create":
+        return { column: op.title };
+      case "column.update":
+      case "column.move":
+      case "column.delete":
+      case "column.restore":
+        return { column: this.columnRow(op.id)?.title };
+      case "note.create":
+        return { note: firstLine(op.text) };
+      case "note.update":
+      case "note.move":
+      case "note.delete":
+      case "note.restore": {
+        const row = this.noteRow(op.id);
+        return row ? { note: firstLine(row.text) } : undefined;
+      }
+      case "note.toCard": {
+        const row = this.noteRow(op.id);
+        return { note: row ? firstLine(row.text) : undefined, to: this.columnRow(op.columnId)?.title };
+      }
+      case "board.pin": {
+        const row = this.noteRow(op.noteId ?? this.getMeta("pinned_note_id") ?? "");
+        return row ? { note: firstLine(row.text) } : undefined;
+      }
+      default:
+        return undefined;
+    }
   }
 
   private columnRow(id: string): ColumnRow | undefined {
@@ -607,17 +718,23 @@ export class BoardStorage {
   commit(op: Op, actor: string, now: number): CommitResult {
     try {
       return this.transaction(() => {
+        // Read before applying, so history keeps the old title, the column a card left, etc.
+        const detail = this.detailFor(op);
         const canonical = this.apply(op, actor, now);
+        if (canonical.kind === "card.move" && detail) detail.to = this.columnRow(canonical.columnId)?.title;
         const seq = this.sql
           .exec<{ seq: number }>(
-            "INSERT INTO ops_log (op, actor_name, at) VALUES (?, ?, ?) RETURNING seq",
+            "INSERT INTO ops_log (op, actor_name, at, detail) VALUES (?, ?, ?, ?) RETURNING seq",
             JSON.stringify(canonical),
             actor,
             now,
+            detail ? JSON.stringify(detail) : null,
           )
           .one().seq;
         if (seq % 100 === 0) this.sql.exec("DELETE FROM ops_log WHERE seq <= ?", seq - OPS_KEPT);
-        return { ok: true as const, committed: { seq, op: canonical, by: actor, at: now } };
+        const committed: CommittedOp = { seq, op: canonical, by: actor, at: now };
+        if (detail) committed.detail = detail;
+        return { ok: true as const, committed };
       });
     } catch (err) {
       if (err instanceof Rejected) return { ok: false, reason: err.message };

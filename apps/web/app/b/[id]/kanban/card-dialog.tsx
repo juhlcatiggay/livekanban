@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COLORS, LIMITS, type Card, type CardPatch } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { COLOR_STYLES } from "./colors";
+import { CardActivity } from "../history";
 import { AssigneesField } from "./assignees";
 import { ChecklistEditor } from "./checklist";
 import { LabelsField } from "./labels";
@@ -85,6 +86,8 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
   // Cards with a description open showing it rendered; empty ones open ready to write.
   /** The description shows rendered; Edit switches to the Markdown source until Done. */
   const [editingDescription, setEditingDescription] = useState(false);
+  /** History loads only when someone opens the Activity section. */
+  const [showActivity, setShowActivity] = useState(false);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -165,7 +168,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
               rows={10}
               value={description}
               maxLength={LIMITS.description}
-              placeholder="Add details. Use the toolbar for bold, lists, links and images; type # to mention a card or note."
+              placeholder="Add details. Use the toolbar for bold, lists, links and images; type @ to mention a card or note."
               onChange={(text) => {
                 draft("description", text);
                 queue({ description: text });
@@ -272,6 +275,11 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
             ))}
           </div>
         </fieldset>
+
+        <details onToggle={(e) => setShowActivity(e.currentTarget.open)} className="border-t border-stone-200 pt-3 dark:border-stone-800">
+          <summary className="cursor-pointer text-sm font-medium">Activity</summary>
+          <div className="mt-2 max-h-60 overflow-y-auto">{showActivity && <CardActivity cardId={card.id} />}</div>
+        </details>
 
         <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-xs text-stone-500 dark:border-stone-800">
           <span>

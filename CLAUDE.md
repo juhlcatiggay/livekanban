@@ -27,17 +27,17 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 
 **1. No-signup boards**
 
-- Landing page with one button: "Create board". It mints an unguessable board ID and redirects to `/b/<id>`.
+- Landing page (hero with a live-board illustration, features, how it works, My boards) whose "Create a board" leads to the create page `/new`: board name, an optional password, and host settings (what everyone else may change), plus an optional JSON export to start from. Creating mints an unguessable board ID and redirects to `/b/<id>`; everything chosen there can be changed later in Host settings.
 - Sharing = copying the URL. Anyone with the link can view and edit.
 - Each board gives every visitor a Marvel character name (e.g. "Storm") and color that nobody else on that board has, and remembers it in a `members` table so reopening the board brings back the same name. A random client ID in localStorage identifies the browser. Names are editable from the avatar menu; a name someone else on the board already has is refused, and a chosen name is asked for on boards the browser joins later.
-- "My recent boards" list on the landing page, read from localStorage only (no server account).
+- "My boards" on the landing page: cards for every board this browser opened (last 50), split into "My own boards" (this browser holds the host key) and "Others' boards" (opened from a shared link). Each card shows when it was opened, "Kept until" or "Expired", and a lock if the board has a password, from the Worker's public status endpoint. Read from localStorage only (no server account).
 
 **2. Kanban**
 
 - Columns: add, rename, reorder by drag, delete (with undo), optional WIP limit.
-- Cards: title, description (markdown), color (a strip along the top), labels, up to 10 assignees (free-text names, suggested from people on the board), start date, due date, and a checklist (up to 100 items) whose progress bar shows on the card.
+- Cards: title, description (markdown), color (a strip along the left edge), labels, up to 10 assignees (free-text names, suggested from people on the board), start date, due date, and a checklist (up to 100 items) whose progress bar shows on the card.
 - Labels are chips: a comma or Enter turns typed text into one, and the board's spelling of a known label is reused. Every label has one color across the board: picked by someone (`label.color` op, stored per board) or derived from its text, so the same label always looks the same.
-- Every card and note gets a board-wide number (`#12`) from one counter the room controls. Typing `#` in a description or note opens a list of cards and notes (filtered by number or title); picking one inserts the link `[#12](#12)`. Only picked items are mentions, so text such as "Top #1 Fan" stays plain. Clicking a mention jumps to the item (switching tabs if needed), shakes it for a second, then opens it.
+- Every card and note gets a board-wide number (`#12`) from one counter the room controls. Typing `@` in a description or note opens a list of cards and notes (filtered by number or title); picking one inserts the link `[@12](#12)`. Only picked items are mentions, so text such as "Top #1 Fan" or an email address stays plain (any link to `#12` counts, so older `[#12](#12)` mentions still work). Clicking a mention jumps to the item (switching tabs if needed), shakes it for a second, then opens it.
 - Descriptions and notes show as rendered markdown (GitHub-flavored: headings, tables, task lists, code with highlighting) with an Edit button. Editing has a formatting toolbar (bold, italic, strikethrough, heading, lists, checklist, quote, code, link, image, table, mention) and Ctrl+B / Ctrl+I / Ctrl+K, so nobody needs to know markdown.
 - Images are added by link (the toolbar's Image button asks for the address); there are no uploads. An image loads after a click, or automatically from sites the viewer chose "Always load from" (kept in their browser). The first such image is the card's cover on the kanban.
 - Deleting a card, column or note asks "Are you sure?" first (and can still be undone or restored from the trash).
@@ -45,6 +45,8 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 - Select several cards by drawing a box from empty board space, or with Ctrl/Shift+click; Escape clears. Dragging any selected card moves them all to the drop point, in board order, as one undo step. A selection bar offers "Move to column" (the keyboard-friendly path) and Delete.
 - Undo/redo for your own last 20 actions; a board-level trash for 7 days so a careless visitor can't wipe a board permanently.
 - Export board as JSON or Markdown.
+- Search and filters above the kanban and the calendar: every word must appear in a card's title, description, labels, assignees or checklist (or be its number, `12` or `#12`); filters by label, assignee and due date (overdue, next 7 days, none). "/" focuses the search box. Non-matching cards are hidden; drags still use the full order.
+- History: a panel of every change, newest first, grouped by day and updating live ("Storm moved “Fix login” from To do to Doing · 5 minutes ago"), and an Activity list in each card. Rapid repeats (typing) collapse into one line. The room records what each op changed when it commits (`ops_log.detail`), so lines keep old titles and columns.
 
 **3. Realtime presence**
 
@@ -160,7 +162,12 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 | `profile` | client → room | presence | name, color | on change |
 | `profileRejected` | room → client | presence | reason (name taken on this board) | on refused rename |
 | `deleteBoard` | client → room | — | (host only) delete the board for everyone | on request |
-| `deleted` / `deleteRefused` | room → client | — | host's name, then the socket closes as expired / reason | on delete |
+| `deleted` | room → client | — | host's name, then the socket closes as expired | on delete |
+| `refused` | room → client | — | reason a host-only request was refused | on refusal |
+| `setPassword` | client → room | — | (host only) new password, or null to remove it | on request |
+| `passwordRequired` | room → client | — | `wrong`, optional `retryAfterMs`; the client sends `hello` again with `password` | on hello to a locked board |
+| `locked` | room → all | — | whether the board now has a password | on change |
+| `history` | both | ops | request: `before` seq, optional card/note `id`; reply: 50 committed ops (with `detail`), newest first, `more` | on request |
 | `peer` | room → all | presence | the updated peer (editing, holding, idle, away, name, color), also sent to that peer | on change |
 | `lock` / `unlock` | client → room | presence | card ID; a granted lock arrives as `peer.holding` | on drag start/end |
 | `lockDenied` | room → client | presence | card ID, holder's name | on contention |
@@ -175,11 +182,11 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON), next\_number, label\_colors (JSON) |
+| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON), next\_number, label\_colors (JSON), password (hash, JSON) |
 | `columns` | `id`, `title`, `position`, `color`, `wip_limit`, `deleted_at` | `position` = fractional index string |
 | `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignees` (JSON), `number`, `start_date`, `due_date`, `checklist` (JSON), `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
 | `notes` | `id`, `number`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `created_at`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
-| `ops_log` | `seq`, `op` (JSON), `actor_name`, `at` | last 1,000 ops for reconnect replay and an activity feed |
+| `ops_log` | `seq`, `op` (JSON), `actor_name`, `at`, `detail` (JSON) | last 2,000 ops for reconnect replay and history; `detail` (schema v9) holds the titles and columns an op touched, read before it applied |
 | `members` | `client_id`, `name`, `color`, `joined_at` | everyone who has opened the board; names unique per board (case-insensitive). Client IDs never leave the room |
 | `backups` | `day`, `at`, `board` (JSON) | one per UTC day with activity, 7 kept; boards over ~1.9 MB of JSON skip backups (SQLite's 2 MB value limit) |
 
@@ -196,7 +203,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 - v1: one link, full edit access. Board IDs are 21-character nanoids; never sequential, never listed, `noindex` on board pages.
 - Host (issue #12): creating a board returns a 32-character host key that the creator's browser keeps (localStorage, per board); the room stores it in its own `meta` and compares it in constant time when `hello` presents it. The host can make four things view-only for everyone else: renaming the board, the bulletin board, card and column contents, and moving cards and columns (`board.permissions` op; all allowed by default). `requiredPermissions()` in the protocol maps every op to what it needs, and both the room (enforcement) and the UI (hiding controls) use it. "Copy host link" (`/b/<id>#host=<key>`) makes another device a host; the fragment never reaches servers and is stripped on arrival. Boards created before hosts existed have no host and stay fully open. The key is stored in plain text rather than hashed because checking it must be synchronous: an async hello would let a following op be processed before the room knew who the host was.
 - v1.1 (cheap to add): a separate read-only link. The room stores a hash of an edit secret; the edit link carries `#k=<secret>` in the URL fragment (never sent in HTTP logs), and the client presents it in `hello`. Viewers still see live cursors but cannot send ops.
-- Optional board passcode, hashed in `meta`, for people who want a lock without an account.
+- Optional board password, chosen on the create page or in Host settings. `meta.password` holds a salted PBKDF2-SHA256 hash (20,000 iterations, a few ms of CPU); the plain password never reaches storage or logs. Everyone except the host must send it in `hello`; until it checks out the connection has no state, so anything else it sends is ignored. 10 wrong guesses per minute per board pause guessing for everyone. Browsers remember a working password per board in localStorage and forget it when it's refused.
 
 **Identity**
 

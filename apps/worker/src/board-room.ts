@@ -3,12 +3,15 @@ import { nanoid } from "nanoid";
 import {
   CURSOR_TICK_MS,
   CloseCode,
+  HISTORY_PAGE,
   MAX_CONNECTIONS,
   MAX_MESSAGE_LENGTH,
   encode,
   isAllowed,
   parseClientMessage,
+  type ClientMessage,
   type CursorEntry,
+  type Permissions,
   type Op,
   type OpKind,
   type Peer,
@@ -16,6 +19,7 @@ import {
   type Sync,
 } from "@livekanban/protocol";
 import { roomTimings, type RoomTimings } from "./config";
+import { hashPassword, verifyPassword } from "./password";
 import { BoardStorage } from "./storage";
 
 /** Connection state: the public peer plus this browser's client ID, which is never sent to others. */
@@ -24,6 +28,19 @@ type ConnState = Peer & { clientId: string };
 /** What others may see of a connection. */
 function publicPeer({ clientId: _, ...peer }: ConnState): Peer {
   return peer;
+}
+
+/** Wrong passwords allowed per board per window, before everyone has to wait. */
+const PASSWORD_ATTEMPTS = 10;
+const PASSWORD_WINDOW_MS = 60_000;
+
+/** What the create endpoint sends to /init. Already validated by the Worker. */
+interface InitBody {
+  ops?: Op[];
+  hostKey?: string;
+  title?: string;
+  permissions?: Permissions;
+  password?: string;
 }
 
 /** A drag lock lapses if its holder hasn't moved the pointer for this long. */
@@ -69,6 +86,10 @@ export class BoardRoom extends Server<Env> {
    * (nobody has sent anything for a while).
    */
   private readonly lastMove = new Map<string, number>();
+  /** Connections whose password is being checked. */
+  private readonly checkingPassword = new Set<string>();
+  /** Recent wrong passwords for this board, from anyone; in memory (a restart forgets them, which only helps briefly). */
+  private passwordFailures: number[] = [];
   /** Rate-limit buckets; in memory, so they reset after hibernation (when nobody is sending). */
   private readonly buckets = new Map<string, Bucket>();
   /** Latest cursor per connection since the last flush (latest wins). */
@@ -218,6 +239,42 @@ export class BoardRoom extends Server<Env> {
 
   // ---- lifecycle ----
 
+  /** Lets `conn` in: picks its name, then sends the board and announces it. */
+  private welcome(conn: Connection<ConnState>, msg: Extract<ClientMessage, { t: "hello" }>) {
+    if (conn.state) return;
+    // Names are per board and unique on it: the room decides, and remembers it for next time.
+    const { name, color } = this.store.joinMember(msg.clientId, msg, Date.now());
+    const state: ConnState = {
+      connectionId: conn.id,
+      clientId: msg.clientId,
+      name,
+      color,
+      editing: null,
+      holding: null,
+      idle: false,
+      away: false,
+      host: this.store.isHostKey(msg.hostKey),
+    };
+    conn.setState(state);
+    const peer = publicPeer(state);
+    this.touch();
+    const peers: Peer[] = [];
+    for (const other of this.getConnections<ConnState>()) {
+      if (other.id !== conn.id && other.state) peers.push(publicPeer(other.state as ConnState));
+    }
+    this.send(conn, {
+      t: "welcome",
+      self: conn.id,
+      you: peer,
+      peers,
+      createdAt: Number(this.store.getMeta("created_at")),
+      keptUntil: this.keptUntil(),
+      sync: this.syncFor(msg.lastSeq),
+      locked: this.store.passwordRecord() !== null,
+    });
+    this.broadcast(encode({ t: "join", peer }), [conn.id]);
+  }
+
   onStart() {
     // Boards created before a schema change are upgraded on first wake.
     if (this.isInitialized() && this.store.needsMigration()) this.store.migrate();
@@ -229,9 +286,15 @@ export class BoardRoom extends Server<Env> {
     // Internal only: the Worker's create endpoint calls this; external POSTs are blocked in the Worker.
     if (request.method === "POST" && url.pathname === "/init") {
       if (this.isInitialized()) return new Response("Board exists", { status: 409 });
-      const { ops = [], hostKey } = (await request.json().catch(() => ({}))) as { ops?: Op[]; hostKey?: string };
+      const { ops = [], hostKey, title, permissions, password } = (await request.json().catch(() => ({}))) as InitBody;
       const now = Date.now();
-      this.store.init(now, () => nanoid(10), { starterColumns: ops.length === 0, hostKey });
+      this.store.init(now, () => nanoid(10), {
+        starterColumns: ops.length === 0,
+        hostKey,
+        title,
+        permissions,
+        password: password ? await hashPassword(password) : undefined,
+      });
       // Imports replay as ordinary ops, so they get the same validation and limits as live edits.
       let skipped = 0;
       for (const op of ops) if (!this.store.commit(op, "Import", now).ok) skipped++;
@@ -255,7 +318,7 @@ export class BoardRoom extends Server<Env> {
         await this.forget();
         return Response.json({ status: "expired" });
       }
-      return Response.json({ status: "active", keptUntil: this.keptUntil() });
+      return Response.json({ status: "active", keptUntil: this.keptUntil(), locked: this.store.passwordRecord() !== null });
     }
 
     return new Response("Method not allowed", { status: 405 });
@@ -308,37 +371,28 @@ export class BoardRoom extends Server<Env> {
 
     switch (msg.t) {
       case "hello": {
-        if (conn.state) return;
-        // Names are per board and unique on it: the room decides, and remembers it for next time.
-        const { name, color } = this.store.joinMember(msg.clientId, msg, Date.now());
-        const state: ConnState = {
-          connectionId: conn.id,
-          clientId: msg.clientId,
-          name,
-          color,
-          editing: null,
-          holding: null,
-          idle: false,
-          away: false,
-          host: this.store.isHostKey(msg.hostKey),
-        };
-        conn.setState(state);
-        const peer = publicPeer(state);
-        this.touch();
-        const peers: Peer[] = [];
-        for (const other of this.getConnections<ConnState>()) {
-          if (other.id !== conn.id && other.state) peers.push(publicPeer(other.state as ConnState));
+        if (conn.state || this.checkingPassword.has(conn.id)) return;
+        const record = this.store.passwordRecord();
+        // The host never needs the password; everyone else does when one is set.
+        if (!record || this.store.isHostKey(msg.hostKey)) return this.welcome(conn, msg);
+        if (msg.password === undefined) return this.send(conn, { t: "passwordRequired", wrong: false });
+        const now = Date.now();
+        this.passwordFailures = this.passwordFailures.filter((t) => now - t < PASSWORD_WINDOW_MS);
+        if (this.passwordFailures.length >= PASSWORD_ATTEMPTS) {
+          const retryAfterMs = this.passwordFailures[0] + PASSWORD_WINDOW_MS - now;
+          return this.send(conn, { t: "passwordRequired", wrong: true, retryAfterMs });
         }
-        this.send(conn, {
-          t: "welcome",
-          self: conn.id,
-          you: peer,
-          peers,
-          createdAt: Number(this.store.getMeta("created_at")),
-          keptUntil: this.keptUntil(),
-          sync: this.syncFor(msg.lastSeq),
-        });
-        this.broadcast(encode({ t: "join", peer }), [conn.id]);
+        // Checked asynchronously; until it passes, the connection has no state, so anything else it sends is ignored.
+        this.checkingPassword.add(conn.id);
+        this.ctx.waitUntil(
+          verifyPassword(msg.password, record)
+            .then((ok) => {
+              if (ok) return this.welcome(conn, msg);
+              this.passwordFailures.push(Date.now());
+              this.send(conn, { t: "passwordRequired", wrong: true });
+            })
+            .finally(() => this.checkingPassword.delete(conn.id)),
+        );
         return;
       }
 
@@ -385,7 +439,7 @@ export class BoardRoom extends Server<Env> {
 
       case "deleteBoard": {
         if (!conn.state) return;
-        if (!conn.state.host) return this.send(conn, { t: "deleteRefused", reason: "Only the host can delete this board" });
+        if (!conn.state.host) return this.send(conn, { t: "refused", reason: "Only the host can delete this board" });
         const by = conn.state.name;
         for (const other of this.getConnections()) {
           this.send(other, { t: "deleted", by });
@@ -395,6 +449,23 @@ export class BoardRoom extends Server<Env> {
         this.ctx.waitUntil(this.ctx.storage.deleteAll());
         return;
       }
+
+      case "setPassword": {
+        if (!conn.state) return;
+        if (!conn.state.host) return this.send(conn, { t: "refused", reason: "Only the host can change the password" });
+        const { password } = msg;
+        this.ctx.waitUntil(
+          (password ? hashPassword(password) : Promise.resolve(null)).then((record) => {
+            this.store.setPasswordRecord(record);
+            this.broadcast(encode({ t: "locked", locked: record !== null }));
+          }),
+        );
+        return;
+      }
+
+      case "history":
+        if (conn.state) this.send(conn, { t: "history", id: msg.id, ...this.store.history(msg.before, msg.id, HISTORY_PAGE) });
+        return;
 
       // ---- presence: kept in connection state, never in SQLite ----
 

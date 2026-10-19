@@ -1,5 +1,5 @@
 const KEY = "lk:recent";
-const MAX = 20;
+const MAX = 50;
 const EVENT = "lk:recent-change";
 
 export interface RecentBoard {

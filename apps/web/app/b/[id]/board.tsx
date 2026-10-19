@@ -10,7 +10,10 @@ import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
 import { BoardActions } from "./board-actions";
 import { ConfirmDialog } from "./confirm-dialog";
+import { HistoryButton } from "./history";
+import { FilterBar } from "./kanban/filter-bar";
 import { InlineEdit } from "./kanban/inline-edit";
+import { PasswordGate } from "./password-gate";
 import { BulletinBoard } from "./bulletin/bulletin-board";
 import { CalendarView } from "./calendar/calendar-view";
 import { PinnedBanner } from "./bulletin/pinned-banner";
@@ -38,6 +41,7 @@ export function Board({ boardId }: { boardId: string }) {
 
   if (status === "expired") return <ExpiredBoard />;
   if (status === "deleted") return <DeletedBoard />;
+  if (status === "password") return <PasswordGate />;
   if (status === "full") {
     return <Notice title="This board is full" body="Too many people are on this board right now. Try again soon." />;
   }
@@ -61,6 +65,7 @@ export function Board({ boardId }: { boardId: string }) {
           )}
         </div>
         <div className="flex items-center gap-4">
+          {board && <HistoryButton />}
           {board && <BoardActions board={board} />}
           <HostMenu boardId={boardId} />
           <PresenceBar />
@@ -74,10 +79,14 @@ export function Board({ boardId }: { boardId: string }) {
         ) : view === "bulletin" ? (
           <BulletinBoard board={board} />
         ) : view === "calendar" ? (
-          <CalendarView board={board} />
+          <>
+            <FilterBar board={board} />
+            <CalendarView board={board} />
+          </>
         ) : (
           <>
             <PinnedBanner board={board} />
+            <FilterBar board={board} />
             <KanbanBoard board={board} />
           </>
         )}
@@ -210,6 +219,7 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   reconnecting: "Reconnecting…",
   expired: "Expired",
   deleted: "Deleted",
+  password: "Password needed",
   full: "Board full",
 };
 

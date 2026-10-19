@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function createBoard(page: Page) {
-  await page.goto("/");
+  await page.goto("/new");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
