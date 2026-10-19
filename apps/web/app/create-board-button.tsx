@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_IMPORT_BYTES } from "@livekanban/protocol";
 import { workerUrl } from "@/lib/config";
@@ -17,6 +17,16 @@ export function CreateBoardButton({ label = "Create board", allowImport = false 
   const turnstile = useTurnstile();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Next keeps this page alive (hidden) after we navigate to the new board, so
+  // coming back would show "Creating…" forever. Reset when the page is hidden.
+  useLayoutEffect(
+    () => () => {
+      setPending(false);
+      setError(null);
+    },
+    [],
+  );
 
   async function create(importData?: unknown) {
     setPending(true);
