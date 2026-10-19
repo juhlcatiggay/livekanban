@@ -161,10 +161,10 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 | `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id |
 | `columns` | `id`, `title`, `position`, `color`, `wip_limit`, `deleted_at` | `position` = fractional index string |
 | `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignee`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
-| `notes` | `id`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `updated_at`, `deleted_at` | bulletin canvas; absolute canvas coordinates |
+| `notes` | `id`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
 | `ops_log` | `seq`, `op` (JSON), `actor_name`, `at` | last 1,000 ops for reconnect replay and an activity feed |
 
-**Limits per board** (enforced in the room): 50 columns, 2,000 cards, 500 notes, 200 characters per title, 10,000 per description, 50 concurrent connections. These keep every board well under the 10 MB-class sizes where snapshots get slow.
+**Limits per board** (enforced in the room): 50 columns, 2,000 cards, 500 notes, 200 characters per title, 10,000 per description or note, notes 120–640 px per side, 50 concurrent connections. These keep every board well under the 10 MB-class sizes where snapshots get slow.
 
 **IDs:** 21-character nanoid for the board (about 126 bits, unguessable), short nanoids for columns, cards and notes, generated on the client so optimistic inserts don't wait for the server.
 
