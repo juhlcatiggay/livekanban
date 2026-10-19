@@ -1,0 +1,48 @@
+name: Load test
+
+# Run by hand (Actions → Load test → Run workflow) against a deployed Worker.
+# A data-center runner has the bandwidth to simulate 50 people on one board;
+# a home connection doesn't (it would download all 50 people's traffic).
+# Boards get rooms near the runner, so latency here is "in-region".
+#
+# The many-boards scenario creates more boards than the per-IP limit allows:
+# set the ADMIN_TOKEN_STAGING secret (same value as the staging Worker's
+# ADMIN_TOKEN) so creation skips the limit and Turnstile.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Worker host (no https://)
+        default: livekanban-staging.jmlcatiggay.workers.dev
+      scenario:
+        description: Which scenario
+        type: choice
+        options: [one-board, many-boards, all]
+        default: one-board
+      seconds:
+        description: Seconds of cursor traffic per scenario
+        default: "30"
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Where the runner reaches Cloudflare
+        run: curl -s "https://${{ inputs.host }}/cdn-cgi/trace" | grep -E '^(colo|loc)='
+      - name: Cursor latency (quiet board)
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN_STAGING }}
+        run: pnpm --filter worker latency --host "${{ inputs.host }}"
+      - name: Load (${{ inputs.scenario }})
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN_STAGING }}
+        run: pnpm --filter worker load --host "${{ inputs.host }}" --scenario "${{ inputs.scenario }}" --seconds "${{ inputs.seconds }}"
