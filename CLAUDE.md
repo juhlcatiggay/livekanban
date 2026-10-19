@@ -35,11 +35,14 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 **2. Kanban**
 
 - Columns: add, rename, reorder by drag, delete (with undo), optional WIP limit.
-- Cards: title, description (markdown), color (a strip along the top), labels, up to 10 assignees (free-text names, suggested from people on the board), due date.
-- Every card and note gets a board-wide number (`#12`) from one counter the room controls. Writing `#12` in a description or note links to that item: clicking jumps to it (switching tabs if needed), shakes it for a second, then opens it.
-- Descriptions show as rendered markdown (GitHub-flavored: headings, tables, task lists, code with highlighting) with an Edit button; images load only after a click.
+- Cards: title, description (markdown), color (a strip along the top), labels, up to 10 assignees (free-text names, suggested from people on the board), start date, due date, and a checklist (up to 100 items) whose progress bar shows on the card.
+- Labels are chips: a comma or Enter turns typed text into one, and the board's spelling of a known label is reused. Every label has one color across the board: picked by someone (`label.color` op, stored per board) or derived from its text, so the same label always looks the same.
+- Every card and note gets a board-wide number (`#12`) from one counter the room controls. Typing `#` in a description or note opens a list of cards and notes (filtered by number or title); picking one inserts the link `[#12](#12)`. Only picked items are mentions, so text such as "Top #1 Fan" stays plain. Clicking a mention jumps to the item (switching tabs if needed), shakes it for a second, then opens it.
+- Descriptions and notes show as rendered markdown (GitHub-flavored: headings, tables, task lists, code with highlighting) with an Edit button. Editing has a formatting toolbar (bold, italic, strikethrough, heading, lists, checklist, quote, code, link, image, table, mention) and Ctrl+B / Ctrl+I / Ctrl+K, so nobody needs to know markdown.
+- Images are added by link (the toolbar's Image button asks for the address); there are no uploads. An image loads after a click, or automatically from sites the viewer chose "Always load from" (kept in their browser). The first such image is the card's cover on the kanban.
 - Deleting a card, column or note asks "Are you sure?" first (and can still be undone or restored from the trash).
 - Drag cards within and across columns; keyboard drag for accessibility.
+- Select several cards by drawing a box from empty board space, or with Ctrl/Shift+click; Escape clears. Dragging any selected card moves them all to the drop point, in board order, as one undo step. A selection bar offers "Move to column" (the keyboard-friendly path) and Delete.
 - Undo/redo for your own last 20 actions; a board-level trash for 7 days so a careless visitor can't wipe a board permanently.
 - Export board as JSON or Markdown.
 
@@ -65,6 +68,7 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 - A board with no visits and no edits for 60 days is permanently deleted.
 - Board footer always shows "Kept until \<date>", which moves forward on activity.
 - Expired board URLs show a friendly "This board expired" page with a button to create a new one.
+- The host can delete the board early from Host settings. The dialog offers a JSON download first and needs the board's name typed to confirm. Everyone connected sees "This board was deleted", and the link behaves like an expired board from then on.
 
 ## Architecture & tech stack
 
@@ -140,6 +144,7 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 - The room is single-threaded, so it is the source of truth: it applies operations in arrival order and assigns each a sequence number.
 - Clients apply their own operations optimistically, tagged with a client op ID; on the server's echo they confirm, and on rejection they roll back.
 - Ordering uses fractional indexes: moving a card writes one new position string between its neighbours, so two people moving different cards never conflict.
+- Checklists change through their own ops (`checklist.add`, `checklist.update`, `checklist.delete`, by item ID), so two people ticking different items never overwrite each other.
 - Text fields: an "editing" presence flag shows who is in a field; saves are last-writer-wins per field, debounced to every 300 ms while typing. If you later want true simultaneous typing in descriptions, add Yjs for that field only (Y-PartyServer supports it).
 - Reconnect: the client sends its last seen sequence number; the room replays missed operations or sends a full snapshot if too far behind.
 
@@ -154,6 +159,8 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 | `presence` | client → room | presence | `editing` target ID or null, `idle`, `away` | on change |
 | `profile` | client → room | presence | name, color | on change |
 | `profileRejected` | room → client | presence | reason (name taken on this board) | on refused rename |
+| `deleteBoard` | client → room | — | (host only) delete the board for everyone | on request |
+| `deleted` / `deleteRefused` | room → client | — | host's name, then the socket closes as expired / reason | on delete |
 | `peer` | room → all | presence | the updated peer (editing, holding, idle, away, name, color), also sent to that peer | on change |
 | `lock` / `unlock` | client → room | presence | card ID; a granted lock arrives as `peer.holding` | on drag start/end |
 | `lockDenied` | room → client | presence | card ID, holder's name | on contention |
@@ -168,9 +175,9 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON), next\_number |
+| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON), next\_number, label\_colors (JSON) |
 | `columns` | `id`, `title`, `position`, `color`, `wip_limit`, `deleted_at` | `position` = fractional index string |
-| `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignees` (JSON), `number`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
+| `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignees` (JSON), `number`, `start_date`, `due_date`, `checklist` (JSON), `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
 | `notes` | `id`, `number`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `created_at`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
 | `ops_log` | `seq`, `op` (JSON), `actor_name`, `at` | last 1,000 ops for reconnect replay and an activity feed |
 | `members` | `client_id`, `name`, `color`, `joined_at` | everyone who has opened the board; names unique per board (case-insensitive). Client IDs never leave the room |
@@ -200,7 +207,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 - Turnstile challenge on "Create board" and a per-IP creation limit (20 boards/hour) in the Worker. The limit uses a small `CreationLimiter` Durable Object per IP, because Workers' built-in rate limiter only supports 10 s or 60 s windows.
 - Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 12,000-character max message (a 4 KB cap could not carry a 10,000-character description); exceeding them drops messages, repeated abuse closes the socket.
 - The per-board size and connection caps from the Data model section.
-- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links). Implemented with react-markdown: raw HTML is skipped, unsafe URL schemes are stripped, links get `rel="noopener nofollow noreferrer ugc"`, and images show a "Load image from {host}" button and are fetched only on click, with no referrer, so cards can't load trackers by themselves.
+- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links). Implemented with react-markdown: raw HTML is skipped, unsafe URL schemes are stripped, links get `rel="noopener nofollow noreferrer ugc"`, and images show a "Load image from {host}" button and are fetched only on click (or from sites the viewer has allowed), with no referrer, so cards can't load trackers by themselves.
 - Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep a daily backup of the board for 7 days (downloadable from the trash and importable as a new board). Converting a note to a card (or back) replaces the source outright, so the trash never offers a duplicate.
 - A "Report board" link and an admin script to delete a board by ID, since anonymous public boards will eventually host content you must take down.
 
