@@ -49,13 +49,15 @@ interface SortableCardProps {
   heldBy?: Peer;
   /** Others editing this card. */
   editors?: Peer[];
+  /** False when the host has made moving cards view-only. */
+  canMove?: boolean;
 }
 
-export function SortableCard({ card, onOpen, heldBy, editors = [] }: SortableCardProps) {
+export function SortableCard({ card, onOpen, heldBy, editors = [], canMove = true }: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: "card" },
-    disabled: !!heldBy,
+    disabled: !!heldBy || !canMove,
   });
 
   if (heldBy) {
@@ -84,7 +86,9 @@ export function SortableCard({ card, onOpen, heldBy, editors = [] }: SortableCar
       {...attributes}
       {...listeners}
       aria-roledescription="card"
-      aria-label={`${card.title}. Press Enter to open, Space to move.`}
+      // dnd-kit marks a non-draggable card aria-disabled, but it can still be opened.
+      aria-disabled={undefined}
+      aria-label={`${card.title}. Press Enter to open${canMove ? ", Space to move" : ""}.`}
       onClick={onOpen}
       onKeyDown={(e) => {
         listeners?.onKeyDown?.(e);

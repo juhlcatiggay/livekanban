@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toExport, toMarkdown, type BoardData, type Op, type TrashItem } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { downloadFile, slug } from "@/lib/download";
+import { useCan } from "@/lib/use-can";
 import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 
 const iconButton =
@@ -75,6 +76,8 @@ function TrashDialog({ board, onClose }: { board: BoardData; onClose: () => void
   const dispatch = useBoard((s) => s.dispatch);
   const fetchBackup = useBoard((s) => s.fetchBackup);
   const [busyDay, setBusyDay] = useState<string | null>(null);
+  const can = useCan();
+  const mayRestore = (item: TrashItem) => (item.kind === "note" ? can.editBulletin : can.editCards);
 
   useEffect(() => {
     ref.current?.showModal();
@@ -125,9 +128,11 @@ function TrashDialog({ board, onClose }: { board: BoardData; onClose: () => void
                   {item.kind === "column" && item.cardCount ? <span className="text-stone-500"> · {item.cardCount} cards</span> : null}
                 </span>
                 <span className="shrink-0 text-xs text-stone-500">{ago(item.deletedAt)}</span>
-                <button type="button" onClick={() => restore(item)} aria-label={`Restore ${item.kind} ${item.label}`} className="shrink-0 rounded px-2 py-0.5 font-medium text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950">
-                  Restore
-                </button>
+                {mayRestore(item) && (
+                  <button type="button" onClick={() => restore(item)} aria-label={`Restore ${item.kind} ${item.label}`} className="shrink-0 rounded px-2 py-0.5 font-medium text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950">
+                    Restore
+                  </button>
+                )}
               </li>
             ))}
           </ul>

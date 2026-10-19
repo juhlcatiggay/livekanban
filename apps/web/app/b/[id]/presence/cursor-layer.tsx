@@ -150,6 +150,7 @@ function RemoteCursor({
           style={{ backgroundColor: peer.color }}
         >
           {peer.name}
+          {peer.host && <span className="ml-1 rounded bg-white/25 px-1 text-[10px] uppercase">Host</span>}
         </span>
         {held && (
           <div className="absolute left-4 top-10" data-ghost={held.id}>

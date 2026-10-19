@@ -29,6 +29,7 @@ import {
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { indexPresence } from "@/lib/presence-index";
+import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
 import { CardFace } from "./card";
 import { CardDialogFor } from "./card-dialog-for";
@@ -77,6 +78,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
   const unlockCard = useBoard((s) => s.unlockCard);
   const peers = useBoard((s) => s.peers);
   const presence = useMemo(() => indexPresence(peers), [peers]);
+  const can = useCan();
   const columns = useMemo(() => sortedColumns(board), [board]);
   const cardsIn = useMemo(() => cardsByColumn(board), [board]);
   const baseOrder = useMemo<Order>(
@@ -274,12 +276,13 @@ export function KanbanBoard({ board }: { board: BoardData }) {
                 column={column}
                 cards={(order[column.id] ?? []).map((id) => board.cards[id]).filter(Boolean)}
                 presence={presence}
+                can={can}
                 onOpenCard={setOpenCardId}
                 onDelete={deleteColumn}
               />
             ))}
           </SortableContext>
-          <AddColumn lastPosition={columns.at(-1)?.position ?? null} full={columns.length >= LIMITS.columns} />
+          {can.editCards && <AddColumn lastPosition={columns.at(-1)?.position ?? null} full={columns.length >= LIMITS.columns} />}
         </div>
         {/* pointer-events-none so the cursor sender sees the card or column under the overlay. */}
         <DragOverlay className="pointer-events-none">

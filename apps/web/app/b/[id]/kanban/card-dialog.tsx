@@ -49,7 +49,10 @@ interface CardDialogProps {
   columnTitle: string;
   onClose: () => void;
   onDelete: (card: Card) => void;
-  onMoveToBulletin: (card: Card) => void;
+  /** Omitted when this tab may not move cards to the bulletin. */
+  onMoveToBulletin?: (card: Card) => void;
+  /** The host made cards view-only: show everything, change nothing. */
+  readOnly?: boolean;
 }
 
 interface Drafts {
@@ -65,7 +68,7 @@ interface Drafts {
  * shows your draft, so someone else's edit never yanks text out from under
  * you. Fields you haven't touched update live as others type (every 300 ms).
  */
-export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulletin }: CardDialogProps) {
+export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulletin, readOnly = false }: CardDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const { queue, flush } = usePatchSender(card.id);
   const setPresence = useBoard((s) => s.setPresence);
@@ -78,18 +81,20 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
   const assignee = drafts.assignee ?? card.assignee;
   const dueDate = drafts.dueDate ?? card.dueDate ?? "";
   // Cards with a description open showing it rendered; empty ones open ready to write.
-  const [descriptionMode, setDescriptionMode] = useState<"write" | "preview">(card.description ? "preview" : "write");
+  const [mode, setDescriptionMode] = useState<"write" | "preview">(card.description ? "preview" : "write");
+  const descriptionMode = readOnly ? "preview" : mode;
 
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
-  // Others see "<you> is editing" on this card while the dialog is open.
+  // Others see "<you> is editing" on this card while the dialog is open (not when only viewing).
   useEffect(() => {
+    if (readOnly) return;
     setPresence({ editing: card.id });
     return () => setPresence({ editing: null });
-  }, [card.id, setPresence]);
+  }, [card.id, readOnly, setPresence]);
 
   const close = () => {
     flush();
@@ -110,6 +115,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
         <div className="flex items-start justify-between gap-4">
           <input
             aria-label="Card title"
+            readOnly={readOnly}
             value={title}
             maxLength={LIMITS.title}
             onChange={(e) => {
@@ -124,6 +130,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
         </div>
         <p className="-mt-3 px-1 text-xs text-stone-500">
           in {columnTitle}
+          {readOnly && <span className="ml-2">· view only</span>}
           {editors.length > 0 && (
             <span className="ml-2 font-medium" style={{ color: editors[0].color }}>
               · {editors.map((p) => p.name).join(", ")} {editors.length > 1 ? "are" : "is"} also editing
@@ -134,7 +141,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Description</span>
-            <div role="tablist" aria-label="Write or preview" className="flex gap-1 text-xs">
+            <div role="tablist" aria-label="Write or preview" className={`flex gap-1 text-xs ${readOnly ? "hidden" : ""}`}>
               {(["write", "preview"] as const).map((mode) => (
                 <button
                   key={mode}
@@ -168,8 +175,8 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
             <div
               role="region"
               aria-label="Description preview"
-              title="Double-click to edit"
-              onDoubleClick={() => setDescriptionMode("write")}
+              title={readOnly ? undefined : "Double-click to edit"}
+              onDoubleClick={() => !readOnly && setDescriptionMode("write")}
               className="max-h-72 min-h-24 overflow-y-auto rounded-md border border-stone-200 px-3 py-2 text-sm dark:border-stone-700"
             >
               {description ? <Markdown text={description} /> : <p className="text-stone-400">Nothing to preview yet.</p>}
@@ -182,6 +189,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
             Assignee
             <input
               value={assignee}
+              readOnly={readOnly}
               maxLength={LIMITS.assignee}
               placeholder="Name"
               onChange={(e) => {
@@ -196,6 +204,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
             <input
               type="date"
               value={dueDate}
+              readOnly={readOnly}
               onChange={(e) => {
                 draft("dueDate", e.target.value);
                 queue({ dueDate: e.target.value || null });
@@ -209,6 +218,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
           Labels
           <input
             value={labels}
+            readOnly={readOnly}
             placeholder="Comma separated, e.g. bug, design"
             onChange={(e) => {
               draft("labels", e.target.value);
@@ -218,7 +228,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
           />
         </label>
 
-        <fieldset className="flex flex-col gap-1.5">
+        <fieldset className="flex flex-col gap-1.5" disabled={readOnly}>
           <legend className="text-sm font-medium">Color</legend>
           <div className="flex flex-wrap gap-2">
             <ColorSwatch label="None" selected={card.color === null} onClick={() => queue({ color: null })} className="bg-white ring-1 ring-stone-300 dark:bg-stone-800" />
@@ -238,28 +248,32 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
           <span>
             Last edited by {card.updatedBy} · {editedFormat.format(card.updatedAt)}
           </span>
-          <span className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              flush();
-              onMoveToBulletin(card);
-            }}
-            className="rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
-          >
-            Move to bulletin
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              flush();
-              onDelete(card);
-            }}
-            className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
-          >
-            Delete card
-          </button>
-          </span>
+          {!readOnly && (
+            <span className="flex gap-1">
+              {onMoveToBulletin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    flush();
+                    onMoveToBulletin(card);
+                  }}
+                  className="rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                >
+                  Move to bulletin
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  flush();
+                  onDelete(card);
+                }}
+                className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+              >
+                Delete card
+              </button>
+            </span>
+          )}
         </div>
       </div>
     </dialog>

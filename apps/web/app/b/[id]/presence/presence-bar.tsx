@@ -21,17 +21,25 @@ function statusOf(p: Pick<Peer, "idle" | "away">) {
   return null;
 }
 
-function Avatar({ peer, label }: { peer: Pick<Peer, "name" | "color" | "idle" | "away">; label: string }) {
+function Avatar({ peer, label }: { peer: Pick<Peer, "name" | "color" | "idle" | "away" | "host">; label: string }) {
   const status = statusOf(peer);
+  const title = [label, peer.host && "host", status].filter(Boolean).join(", ");
   return (
-    <span
-      title={status ? `${label} (${status})` : label}
-      className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white transition-opacity dark:border-stone-950 ${
-        status ? "opacity-40" : ""
-      }`}
-      style={{ backgroundColor: peer.color }}
-    >
-      {initials(peer.name)}
+    <span className="relative block">
+      <span
+        title={title}
+        className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white transition-opacity dark:border-stone-950 ${
+          status ? "opacity-40" : ""
+        }`}
+        style={{ backgroundColor: peer.color }}
+      >
+        {initials(peer.name)}
+      </span>
+      {peer.host && (
+        <span className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded bg-amber-400 px-1 text-[9px] font-bold uppercase leading-tight text-stone-900">
+          Host
+        </span>
+      )}
     </span>
   );
 }
@@ -50,7 +58,7 @@ export function PresenceBar() {
         {me && self && (
           <li>
             <ProfileMenu>
-              <Avatar peer={{ ...me, idle: selfPeer?.idle ?? false, away: false }} label={`${me.name} (you)`} />
+              <Avatar peer={{ ...me, idle: selfPeer?.idle ?? false, away: false, host: selfPeer?.host ?? false }} label={`${me.name} (you)`} />
             </ProfileMenu>
           </li>
         )}

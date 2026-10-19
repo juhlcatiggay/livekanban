@@ -4,6 +4,7 @@ import { useLayoutEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_IMPORT_BYTES } from "@livekanban/protocol";
 import { workerUrl } from "@/lib/config";
+import { saveHostKey } from "@/lib/host";
 import { useTurnstile } from "@/lib/turnstile";
 
 interface CreateBoardButtonProps {
@@ -37,8 +38,10 @@ export function CreateBoardButton({ label = "Create board", allowImport = false 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ turnstileToken: turnstile.token ?? undefined, import: importData }),
       });
-      const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+      const body = (await res.json().catch(() => ({}))) as { id?: string; hostKey?: string; error?: string };
       if (!res.ok || !body.id) throw new Error(body.error ?? `HTTP ${res.status}`);
+      // You created it, so you're its host (issue #12).
+      if (body.hostKey) saveHostKey(body.id, body.hostKey);
       router.push(`/b/${body.id}`);
     } catch (err) {
       const message = err instanceof Error && !err.message.startsWith("HTTP") && err.message !== "Failed to fetch" ? err.message : null;

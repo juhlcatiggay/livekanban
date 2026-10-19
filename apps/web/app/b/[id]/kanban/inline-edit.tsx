@@ -11,13 +11,17 @@ interface InlineEditProps {
   className?: string;
   /** Called with true when the input opens and false when it closes. */
   onEditingChange?: (editing: boolean) => void;
+  /** Read-only: show the text without the rename affordance (e.g. the host made it view-only). */
+  disabled?: boolean;
 }
 
 /** Text that turns into an input on click; Enter or blur saves, Escape cancels. */
-export function InlineEdit({ value, onCommit, label, className = "", onEditingChange }: InlineEditProps) {
+export function InlineEdit({ value, onCommit, label, className = "", onEditingChange, disabled = false }: InlineEditProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const done = useRef(false);
+
+  if (disabled) return <span className={`min-w-0 truncate px-1 ${className}`}>{value}</span>;
 
   if (!editing) {
     return (

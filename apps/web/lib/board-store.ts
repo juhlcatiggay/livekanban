@@ -112,7 +112,8 @@ interface PendingOp {
 }
 
 /** Opens the board's socket and feeds the store. Returns a disconnect function. */
-export function connectBoard(boardId: string, initialIdentity: Identity): () => void {
+/** `hostKey` (if this browser holds one for the board) makes this tab the host. */
+export function connectBoard(boardId: string, initialIdentity: Identity, hostKey?: string): () => void {
   const set = useBoard.setState;
   let identity = initialIdentity;
 
@@ -244,7 +245,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
   };
 
   socket.addEventListener("open", () => {
-    socket.send(encode({ t: "hello", ...identity, lastSeq: confirmed ? seq : 0 }));
+    socket.send(encode({ t: "hello", ...identity, lastSeq: confirmed ? seq : 0, hostKey }));
   });
 
   socket.addEventListener("message", (event: MessageEvent<string>) => {
@@ -268,7 +269,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
         set({
           status: "open",
           self: msg.self,
-          selfPeer: null,
+          selfPeer: msg.you,
           keptUntil: msg.keptUntil,
           peers: Object.fromEntries(msg.peers.map((p) => [p.connectionId, p])),
         });

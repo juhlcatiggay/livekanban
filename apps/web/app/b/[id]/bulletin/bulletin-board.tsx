@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CANVAS, LIMITS, NOTE_SIZE, cardsByColumn, sortedColumns, type BoardData, type Note } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { indexPresence } from "@/lib/presence-index";
+import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
 import { Minimap } from "./minimap";
 import { CanvasNote } from "./note";
@@ -22,6 +23,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   const peers = useBoard((s) => s.peers);
   const offerUndo = useUndo((s) => s.offer);
   const presence = useMemo(() => indexPresence(peers), [peers]);
+  const canEdit = useCan().editBulletin;
   const notes = useMemo(() => Object.values(board.notes).sort((a, b) => a.z - b.z), [board.notes]);
   const columns = useMemo(() => sortedColumns(board), [board]);
   const cardsIn = useMemo(() => cardsByColumn(board), [board]);
@@ -57,15 +59,21 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-2 text-sm dark:border-stone-800">
-        <button
-          type="button"
-          onClick={addNoteInView}
-          disabled={full}
-          className="rounded-md bg-amber-400 px-3 py-1 font-medium text-stone-900 hover:bg-amber-300 disabled:opacity-50"
-        >
-          + Add note
-        </button>
-        <span className="text-xs text-stone-500">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+        {canEdit ? (
+          <>
+            <button
+              type="button"
+              onClick={addNoteInView}
+              disabled={full}
+              className="rounded-md bg-amber-400 px-3 py-1 font-medium text-stone-900 hover:bg-amber-300 disabled:opacity-50"
+            >
+              + Add note
+            </button>
+            <span className="text-xs text-stone-500">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+          </>
+        ) : (
+          <span className="text-xs text-stone-500">The host has made the bulletin board view-only.</span>
+        )}
         <div className="ml-auto flex items-center gap-1" role="group" aria-label="Zoom">
           {ZOOMS.map((z) => (
             <button
@@ -96,7 +104,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
                 backgroundSize: "24px 24px",
               }}
               onDoubleClick={(e) => {
-                if (e.target !== e.currentTarget) return;
+                if (!canEdit || e.target !== e.currentTarget) return;
                 const r = e.currentTarget.getBoundingClientRect();
                 createNote((e.clientX - r.left) / zoom - NOTE_SIZE.defaultW / 2, (e.clientY - r.top) / zoom - 20);
               }}
@@ -114,6 +122,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
                   startEditing={note.id === justCreated}
                   onEditingDone={() => setJustCreated(null)}
                   onDelete={deleteNote}
+                  canEdit={canEdit}
                 />
               ))}
             </div>

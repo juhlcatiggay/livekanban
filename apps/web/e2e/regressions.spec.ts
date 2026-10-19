@@ -78,7 +78,8 @@ test("#6 sticky notes render Markdown", async ({ page }) => {
   await expect(note.locator("script")).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
 
-  // Clicking a link in a note follows it rather than starting a drag.
+  // Clicking a link in a note follows it rather than starting a drag (answered locally, no network).
+  await page.context().route("https://example.com/**", (route) => route.fulfill({ body: "ok" }));
   const [popup] = await Promise.all([page.waitForEvent("popup"), note.getByRole("link").click()]);
   expect(popup.url()).toContain("example.com");
 });
@@ -158,4 +159,67 @@ test("#8 the calendar shows cards by due date and drag reschedules them", async 
   await expect(heading).not.toHaveText(thisMonth!);
   await ada.getByRole("button", { name: "Today" }).click();
   await expect(heading).toHaveText(thisMonth!);
+});
+
+test("#12 the board creator is host and can make parts view-only for others", async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  await hostContext.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const host = await hostContext.newPage();
+  await createBoard(host);
+  const url = host.url();
+  const todo = (page: Page) => page.getByRole("region", { name: "Column To do" });
+  await todo(host).getByRole("button", { name: "+ Add card" }).click();
+  await todo(host).getByLabel("New card title").fill("Agenda");
+  await todo(host).getByLabel("New card title").press("Enter");
+  await todo(host).getByLabel("New card title").press("Escape");
+
+  const guest = await (await browser.newContext()).newPage();
+  await guest.goto(url);
+  await expect(guest.getByText("Live", { exact: true })).toBeVisible();
+
+  // Only the creator gets host settings; everyone sees who the host is.
+  await expect(host.getByText("Host settings")).toBeVisible();
+  await expect(guest.getByText("Host settings")).toHaveCount(0);
+  await expect(guest.getByRole("list", { name: /people on this board/ }).getByText("Host")).toHaveCount(1);
+
+  // Lock down cards and moving.
+  await host.getByText("Host settings").click();
+  await host.getByLabel("add, edit and delete cards and columns").uncheck();
+  await host.getByLabel("move cards and columns").uncheck();
+  await host.keyboard.press("Escape");
+
+  await expect(guest.getByRole("status").filter({ hasText: /^View only/ })).toContainText("move cards and columns");
+  await expect(todo(guest).getByRole("button", { name: "+ Add card" })).toHaveCount(0);
+  await expect(guest.getByRole("button", { name: /^Move column/ })).toHaveCount(0);
+  await expect(guest.getByLabel("Column To do options")).toHaveCount(0);
+  // The card can't be moved (no "Space to move"), but it stays enabled because it still opens.
+  await expect(guest.getByRole("button", { name: "Agenda. Press Enter to open." })).toBeEnabled();
+
+  // Cards still open, read-only.
+  await guest.getByRole("button", { name: /^Agenda\. Press Enter/ }).click();
+  const dialog = guest.getByRole("dialog");
+  await expect(dialog.getByLabel("Card title")).toHaveAttribute("readonly", "");
+  await expect(dialog.getByText("· view only")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Delete card" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  // The host is unaffected, and the bulletin is still open to everyone.
+  await expect(todo(host).getByRole("button", { name: "+ Add card" })).toBeVisible();
+  await guest.getByRole("tab", { name: /^Bulletin/ }).click();
+  await expect(guest.getByRole("button", { name: "+ Add note" })).toBeVisible();
+
+  // Restrictions persist across reloads.
+  await guest.reload();
+  await expect(guest.getByRole("status").filter({ hasText: /^View only/ })).toBeVisible();
+
+  // A host link makes another device a host too.
+  await host.getByText("Host settings").click();
+  await host.getByRole("button", { name: "Copy host link" }).click();
+  const link = await host.evaluate(() => navigator.clipboard.readText());
+  expect(link).toMatch(/#host=[A-Za-z0-9_-]{32}$/);
+  const cohost = await (await browser.newContext()).newPage();
+  await cohost.goto(link.replace(/^https?:\/\/[^/]+/, ""));
+  await expect(cohost.getByText("Host settings")).toBeVisible();
+  expect(cohost.url()).not.toContain("#host=");
+  await expect(todo(cohost).getByRole("button", { name: "+ Add card" })).toBeVisible();
 });

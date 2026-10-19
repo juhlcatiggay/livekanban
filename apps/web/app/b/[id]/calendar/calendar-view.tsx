@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { byPosition, sortedColumns, type BoardData, type Card } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
+import { useCan } from "@/lib/use-can";
 import { CardDialogFor } from "../kanban/card-dialog-for";
 import { COLOR_STYLES } from "../kanban/colors";
 
@@ -32,6 +33,8 @@ function monthGrid(year: number, month: number): Date[] {
  */
 export function CalendarView({ board }: { board: BoardData }) {
   const dispatch = useBoard((s) => s.dispatch);
+  // Rescheduling changes a card's due date, so it needs card-editing rights.
+  const canReschedule = useCan().editCards;
   const today = isoDay(new Date());
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -89,7 +92,7 @@ export function CalendarView({ board }: { board: BoardData }) {
           Today
         </button>
         <span className="ml-auto text-xs text-stone-500">
-          Drag a card to another day to change its due date.
+          {canReschedule ? "Drag a card to another day to change its due date." : "The host has made cards view-only."}
           {undated > 0 && ` ${undated} card${undated === 1 ? " has" : "s have"} no due date.`}
         </span>
       </div>
@@ -138,7 +141,7 @@ export function CalendarView({ board }: { board: BoardData }) {
                   <button
                     key={card.id}
                     type="button"
-                    draggable
+                    draggable={canReschedule}
                     data-anchor={card.id}
                     onDragStart={(e) => {
                       e.dataTransfer.setData(CARD_MIME, card.id);
@@ -146,7 +149,7 @@ export function CalendarView({ board }: { board: BoardData }) {
                     }}
                     onDragEnd={() => setDropTarget(null)}
                     onClick={() => setOpenCardId(card.id)}
-                    aria-label={`${card.title} (${board.columns[card.columnId]?.title ?? ""}). Drag to change its due date.`}
+                    aria-label={`${card.title} (${board.columns[card.columnId]?.title ?? ""})${canReschedule ? ". Drag to change its due date." : ""}`}
                     className="relative w-full cursor-grab overflow-hidden rounded border border-stone-200 bg-white py-0.5 pl-2 pr-1 text-left text-xs text-stone-900 shadow-sm hover:border-stone-400 active:cursor-grabbing dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                   >
                     <span className={`absolute inset-y-0 left-0 w-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-stone-300 dark:bg-stone-600"}`} />

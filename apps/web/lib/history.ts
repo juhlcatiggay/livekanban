@@ -23,6 +23,8 @@ export function invert(board: BoardData, op: Op): Op | null {
       return { kind: "board.update", title: board.title };
     case "board.pin":
       return { kind: "board.pin", noteId: board.pinnedNoteId };
+    case "board.permissions":
+      return { kind: "board.permissions", permissions: board.permissions };
 
     case "column.create":
       return { kind: "column.delete", id: op.id };

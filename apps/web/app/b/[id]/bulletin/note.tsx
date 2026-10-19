@@ -63,10 +63,12 @@ interface CanvasNoteProps {
   /** Open the text editor as soon as the note mounts (for brand-new notes). */
   startEditing?: boolean;
   onEditingDone?: () => void;
+  /** False when the host has made the bulletin view-only: no drag, resize, edit or menu. */
+  canEdit?: boolean;
   onDelete: (note: Note) => void;
 }
 
-export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, heldBy, editors = [], startEditing = false, onEditingDone, onDelete }: CanvasNoteProps) {
+export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, heldBy, editors = [], startEditing = false, onEditingDone, onDelete, canEdit = true }: CanvasNoteProps) {
   const dispatch = useBoard((s) => s.dispatch);
   const lockCard = useBoard((s) => s.lockCard);
   const unlockCard = useBoard((s) => s.unlockCard);
@@ -78,7 +80,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
   /** Live size while resizing. */
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
-  const [editing, setEditing] = useState(startEditing);
+  const [editing, setEditing] = useState(startEditing && canEdit);
   const [draft, setDraft] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -141,10 +143,10 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         height: dims.h,
         zIndex: drag ? 100_000 : note.z,
         boxShadow: editor ? `0 0 0 3px ${editor.color}` : undefined,
-        cursor: editing ? "auto" : drag ? "grabbing" : "grab",
+        cursor: editing || !canEdit ? "auto" : drag ? "grabbing" : "grab",
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0 || editing || (e.target as HTMLElement).closest("button, a, textarea, details, [data-resize]")) return;
+        if (!canEdit || e.button !== 0 || editing || (e.target as HTMLElement).closest("button, a, textarea, details, [data-resize]")) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         dragStart.current = { px: e.clientX, py: e.clientY, x: note.x, y: note.y, moved: false };
       }}
@@ -173,9 +175,9 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         dragStart.current = null;
         setDrag(null);
       }}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={() => canEdit && setEditing(true)}
       onKeyDown={(e) => {
-        if (editing || e.target !== e.currentTarget) return;
+        if (!canEdit || editing || e.target !== e.currentTarget) return;
         const step = e.shiftKey ? NUDGE * 5 : NUDGE;
         const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
         if (delta) {
@@ -213,31 +215,33 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         </span>
       )}
       {editor && <EditingBadge peers={editors} />}
-      {!editing && (
+      {canEdit && !editing && (
         <NoteMenu note={note} pinned={pinned} columns={columns} lastCardPosition={lastCardPosition} onEdit={() => setEditing(true)} onDelete={() => onDelete(note)} />
       )}
-      <div
-        data-resize
-        aria-hidden
-        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize opacity-0 group-hover:opacity-100"
-        style={{ background: "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.25) 50%)" }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          resizeStart.current = { px: e.clientX, py: e.clientY, w: note.w, h: note.h };
-        }}
-        onPointerMove={(e) => {
-          const s = resizeStart.current;
-          if (!s) return;
-          const clampSize = (v: number) => Math.round(Math.min(Math.max(v, NOTE_SIZE.min), NOTE_SIZE.max));
-          setSize({ w: clampSize(s.w + (e.clientX - s.px) / zoom), h: clampSize(s.h + (e.clientY - s.py) / zoom) });
-        }}
-        onPointerUp={() => {
-          resizeStart.current = null;
-          if (size && (size.w !== note.w || size.h !== note.h)) dispatch({ kind: "note.update", id: note.id, patch: size });
-          setSize(null);
-        }}
-      />
+      {canEdit && (
+        <div
+          data-resize
+          aria-hidden
+          className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize opacity-0 group-hover:opacity-100"
+          style={{ background: "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.25) 50%)" }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            resizeStart.current = { px: e.clientX, py: e.clientY, w: note.w, h: note.h };
+          }}
+          onPointerMove={(e) => {
+            const s = resizeStart.current;
+            if (!s) return;
+            const clampSize = (v: number) => Math.round(Math.min(Math.max(v, NOTE_SIZE.min), NOTE_SIZE.max));
+            setSize({ w: clampSize(s.w + (e.clientX - s.px) / zoom), h: clampSize(s.h + (e.clientY - s.py) / zoom) });
+          }}
+          onPointerUp={() => {
+            resizeStart.current = null;
+            if (size && (size.w !== note.w || size.h !== note.h)) dispatch({ kind: "note.update", id: note.id, patch: size });
+            setSize(null);
+          }}
+        />
+      )}
     </div>
   );
 }
