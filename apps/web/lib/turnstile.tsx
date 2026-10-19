@@ -35,6 +35,20 @@ function loadScript(): Promise<void> {
 }
 
 /**
+ * Turnstile error codes: 400xxx and 110xxx are configuration problems (wrong
+ * key, hostname not allowed), which only the site owner can fix.
+ * https://developers.cloudflare.com/turnstile/troubleshooting/client-side-errors/error-codes/
+ */
+function describeError(code: string | null): string | null {
+  if (!code) return null;
+  if (code === "script") return "Verification couldn't load. Disable content blockers for this site or try another browser.";
+  if (code === "400020") return "Verification is misconfigured: the site key isn't valid (Turnstile error 400020).";
+  if (code.startsWith("110200")) return "Verification is misconfigured: this hostname isn't allowed for the site key (Turnstile error 110200).";
+  if (code.startsWith("400") || code.startsWith("110")) return `Verification is misconfigured (Turnstile error ${code}).`;
+  return `Verification failed (Turnstile error ${code}). Reload the page to try again.`;
+}
+
+/**
  * Cloudflare Turnstile for board creation. Uses "interaction-only"
  * appearance, so most visitors never see a challenge. Tokens are single-use:
  * call reset() after each request.
@@ -43,7 +57,8 @@ export function useTurnstile() {
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  /** Turnstile error code, or "script" if the script itself couldn't load. */
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!SITE_KEY) return;
@@ -56,10 +71,14 @@ export function useTurnstile() {
           appearance: "interaction-only",
           callback: (t: string) => setToken(t),
           "expired-callback": () => setToken(null),
-          "error-callback": () => setFailed(true),
+          // Returning true tells Turnstile we've handled (and will show) the error.
+          "error-callback": (code: string) => {
+            setError(String(code));
+            return true;
+          },
         });
       },
-      () => !cancelled && setFailed(true),
+      () => !cancelled && setError("script"),
     );
     return () => {
       cancelled = true;
@@ -76,7 +95,8 @@ export function useTurnstile() {
   return {
     /** True when a request can be sent now (no challenge configured, or a token is ready). */
     ready: !SITE_KEY || token !== null,
-    failed,
+    /** Why verification can't run, for display; null when fine. */
+    problem: describeError(error),
     token,
     reset,
     widget: SITE_KEY ? <div ref={container} /> : null,
