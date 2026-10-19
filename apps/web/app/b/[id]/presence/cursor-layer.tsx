@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, type RefObject } from "react";
-import type { Card, Peer } from "@livekanban/protocol";
-import { BOARD_ANCHOR, anchorElement, revealAnchor, toViewport } from "@/lib/anchors";
+import type { Card, Note, Peer } from "@livekanban/protocol";
+import { presenceArea, revealAnchor, toViewport } from "@/lib/anchors";
 import { useBoard } from "@/lib/board-store";
 import { cursorSamples, type CursorSample } from "@/lib/cursors";
+import { NoteFace } from "../bulletin/note";
 import { CardFace } from "../kanban/card";
 
 /**
@@ -58,7 +59,8 @@ export function CursorLayer() {
       frame = requestAnimationFrame(tick);
       const t = performance.now() - INTERPOLATION_DELAY_MS;
       const cache = new Map<string, Point | null>();
-      const area = anchorElement(BOARD_ANCHOR)?.getBoundingClientRect();
+      // The visible board or canvas; outside it, cursors become edge indicators.
+      const area = presenceArea()?.getBoundingClientRect();
       for (const [id, h] of handles.current) {
         if (!h.cursor || !h.edge || !h.arrow) continue;
         const p = positionAt(cursorSamples(id), t, cache);
@@ -96,7 +98,7 @@ export function CursorLayer() {
         <RemoteCursor
           key={peer.connectionId}
           peer={peer}
-          held={peer.holding ? board?.cards[peer.holding] : undefined}
+          held={peer.holding ? (board?.cards[peer.holding] ?? board?.notes[peer.holding]) : undefined}
           handles={handles}
         />
       ))}
@@ -110,7 +112,7 @@ function RemoteCursor({
   handles,
 }: {
   peer: Peer;
-  held: Card | undefined;
+  held: Card | Note | undefined;
   handles: RefObject<Map<string, Handles>>;
 }) {
   const cursor = useRef<HTMLDivElement>(null);
@@ -150,8 +152,14 @@ function RemoteCursor({
           {peer.name}
         </span>
         {held && (
-          <div className="absolute left-4 top-10 w-64" data-ghost={held.id}>
-            <CardFace card={held} lifted />
+          <div className="absolute left-4 top-10" data-ghost={held.id}>
+            {"columnId" in held ? (
+              <div className="w-64">
+                <CardFace card={held} lifted />
+              </div>
+            ) : (
+              <NoteFace note={held} lifted />
+            )}
             <span className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: peer.color }}>
               {peer.name} is moving
             </span>

@@ -27,13 +27,14 @@ import {
   type BoardData,
   type Card,
   type Column,
-  type Op,
-  type Peer,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { indexPresence } from "@/lib/presence-index";
+import { useUndo } from "@/lib/undo";
+import { freeNoteSpot } from "../bulletin/placement";
 import { CardFace } from "./card";
 import { CardDialog } from "./card-dialog";
-import { ColumnPreview, SortableColumn, columnDragId, type PresenceIndex } from "./column";
+import { ColumnPreview, SortableColumn, columnDragId } from "./column";
 
 const isColumnDragId = (id: UniqueIdentifier) => String(id).startsWith("col:");
 const columnIdOf = (dragId: UniqueIdentifier) => String(dragId).slice(4);
@@ -72,20 +73,6 @@ function neighbours(ids: string[], i: number, positionOf: (id: string) => string
 const fitsBetween = (pos: string, before: string | null | undefined, after: string | null | undefined) =>
   (!before || before < pos) && (!after || pos < after);
 
-interface UndoState {
-  label: string;
-  restore: Op;
-}
-
-function indexPresence(peers: Record<string, Peer>): PresenceIndex {
-  const index: PresenceIndex = { heldBy: {}, editors: {} };
-  for (const p of Object.values(peers)) {
-    if (p.holding) index.heldBy[p.holding] = p;
-    if (p.editing) (index.editors[p.editing] ??= []).push(p);
-  }
-  return index;
-}
-
 export function KanbanBoard({ board }: { board: BoardData }) {
   const dispatch = useBoard((s) => s.dispatch);
   const lockCard = useBoard((s) => s.lockCard);
@@ -120,10 +107,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     columnIdsRef.current = columns.map((c) => c.id);
   }, [columns]);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const [undo, setUndo] = useState<UndoState | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => () => clearTimeout(undoTimer.current), []);
+  const offerUndo = useUndo((s) => s.offer);
 
   const order = dragOrder ?? baseOrder;
 
@@ -191,12 +175,6 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     }),
   );
 
-  const offerUndo = (label: string, restore: Op) => {
-    clearTimeout(undoTimer.current);
-    setUndo({ label, restore });
-    undoTimer.current = setTimeout(() => setUndo(null), 8000);
-  };
-
   const deleteColumn = (column: Column) => {
     dispatch({ kind: "column.delete", id: column.id });
     offerUndo(`Column “${column.title}” deleted`, {
@@ -211,6 +189,12 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     setOpenCardId(null);
     dispatch({ kind: "card.delete", id: card.id });
     offerUndo(`Card “${card.title}” deleted`, { kind: "card.restore", id: card.id, card });
+  };
+
+  const moveCardToBulletin = (card: Card) => {
+    setOpenCardId(null);
+    const { x, y } = freeNoteSpot(board);
+    dispatch({ kind: "card.toNote", id: card.id, noteId: newItemId(), x, y });
   };
 
   const onDragStart = ({ active }: DragStartEvent) => {
@@ -297,7 +281,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
           setColumnOrder(null);
         }}
       >
-        <div className="flex flex-1 items-start gap-3 overflow-x-auto p-4" data-anchor="board">
+        <div className="flex flex-1 items-start gap-3 overflow-x-auto p-4" data-anchor="board" data-presence-area>
           <SortableContext items={shownColumns.map((c) => columnDragId(c.id))} strategy={horizontalListSortingStrategy}>
             {shownColumns.map((column) => (
               <SortableColumn
@@ -326,23 +310,8 @@ export function KanbanBoard({ board }: { board: BoardData }) {
           columnTitle={board.columns[openCard.columnId]?.title ?? ""}
           onClose={() => setOpenCardId(null)}
           onDelete={deleteCard}
+          onMoveToBulletin={moveCardToBulletin}
         />
-      )}
-
-      {undo && (
-        <div role="status" className="fixed bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-stone-900 px-4 py-2.5 text-sm text-white shadow-lg dark:bg-stone-100 dark:text-stone-900">
-          <span>{undo.label}</span>
-          <button
-            type="button"
-            className="font-semibold text-teal-300 hover:underline dark:text-teal-700"
-            onClick={() => {
-              dispatch(undo.restore);
-              setUndo(null);
-            }}
-          >
-            Undo
-          </button>
-        </div>
       )}
     </>
   );

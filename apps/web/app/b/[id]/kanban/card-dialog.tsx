@@ -48,6 +48,7 @@ interface CardDialogProps {
   columnTitle: string;
   onClose: () => void;
   onDelete: (card: Card) => void;
+  onMoveToBulletin: (card: Card) => void;
 }
 
 interface Drafts {
@@ -63,7 +64,7 @@ interface Drafts {
  * shows your draft, so someone else's edit never yanks text out from under
  * you. Fields you haven't touched update live as others type (every 300 ms).
  */
-export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogProps) {
+export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulletin }: CardDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const { queue, flush } = usePatchSender(card.id);
   const setPresence = useBoard((s) => s.setPresence);
@@ -203,6 +204,17 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
           <span>
             Last edited by {card.updatedBy} · {editedFormat.format(card.updatedAt)}
           </span>
+          <span className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              flush();
+              onMoveToBulletin(card);
+            }}
+            className="rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+          >
+            Move to bulletin
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -213,6 +225,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete }: CardDialogP
           >
             Delete card
           </button>
+          </span>
         </div>
       </div>
     </dialog>
