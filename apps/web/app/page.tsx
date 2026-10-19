@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CreateBoardButton } from "./create-board-button";
 import { Icon, type IconName } from "./icons";
 import { MyBoards } from "./recent-boards";
+import { TryBoard } from "./try-board";
 
 const FEATURES: { icon: IconName; title: string; body: string }[] = [
   { icon: "cursor", title: "Everyone, live.", body: "See each person's pointer, what they're dragging and where they're typing, the moment it happens." },
@@ -58,7 +59,8 @@ export default function Home() {
           </div>
           <p className="mt-4 text-xs text-gray-500">Free. No account. Works in any browser.</p>
           <div className="mx-auto mt-14 max-w-3xl">
-            <BoardPreview />
+            <TryBoard />
+            <p className="mt-4 text-xs text-gray-500">Go ahead, drag a card. It&apos;s a real board, just not saved.</p>
           </div>
         </section>
 
@@ -114,76 +116,5 @@ export default function Home() {
         </p>
       </footer>
     </div>
-  );
-}
-
-/** A still picture of a live board: three columns, a few cards, two named cursors. Decorative. */
-function BoardPreview() {
-  const columns = [
-    { title: "To Do", cards: [{ t: "Plan launch email", label: ["bg-pink-100 text-pink-800", "Marketing"] }, { t: "Pick a domain" }] },
-    { title: "Doing", cards: [{ t: "Landing page", label: ["bg-blue-100 text-blue-800", "Design"], progress: 0.6 }, { t: "Fix sign-in", color: "bg-red-500" }] },
-    { title: "Done", cards: [{ t: "Brand colors", progress: 1 }] },
-  ];
-  return (
-    <div
-      aria-hidden
-      className="relative select-none rounded-[22px] border border-black/5 bg-gray-100 p-4 text-left shadow-[0_30px_80px_-20px_rgb(0_0_0/0.25)] sm:p-5 dark:border-white/10 dark:bg-gray-900"
-    >
-      <div className="mb-4 flex items-center justify-between">
-        <span className="flex items-center gap-1.5">
-          {["bg-red-400", "bg-amber-400", "bg-green-400"].map((c) => (
-            <span key={c} className={`h-2.5 w-2.5 rounded-full ${c}`} />
-          ))}
-          <span className="ml-3 text-sm font-semibold">Website relaunch</span>
-        </span>
-        <span className="flex -space-x-1.5">
-          {[
-            ["bg-accent-600", "S"],
-            ["bg-amber-500", "T"],
-            ["bg-purple-500", "W"],
-          ].map(([c, l]) => (
-            <span key={l} className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ring-gray-100 dark:ring-gray-900 ${c}`}>
-              {l}
-            </span>
-          ))}
-        </span>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        {columns.map((col) => (
-          <div key={col.title} className="rounded-xl bg-black/[0.04] p-2.5 dark:bg-white/[0.06]">
-            <p className="mb-2 px-1 text-xs font-semibold text-gray-600 dark:text-gray-300">{col.title}</p>
-            <div className="flex flex-col gap-2">
-              {col.cards.map((card) => (
-                <div key={card.t} className="relative overflow-hidden rounded-lg bg-white p-2.5 text-xs shadow-sm dark:bg-gray-800">
-                  {"color" in card && <span className={`absolute inset-y-0 left-0 w-1 ${card.color}`} />}
-                  <p className="font-medium">{card.t}</p>
-                  {"label" in card && card.label && <span className={`mt-1.5 inline-block rounded px-1.5 text-[10px] font-medium ${card.label[0]}`}>{card.label[1]}</span>}
-                  {"progress" in card && card.progress !== undefined && (
-                    <span className="mt-2 block h-1 rounded-full bg-gray-200 dark:bg-gray-700">
-                      <span className={`block h-full rounded-full ${card.progress === 1 ? "bg-green-500" : "bg-accent-500"}`} style={{ width: `${card.progress * 100}%` }} />
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <Cursor name="Storm" color="#0071e3" className="left-[24%] top-[44%]" />
-      <Cursor name="Thor" color="#ff9500" className="left-[60%] top-[72%]" />
-    </div>
-  );
-}
-
-function Cursor({ name, color, className }: { name: string; color: string; className: string }) {
-  return (
-    <span className={`absolute ${className} animate-[lk-drift_7s_ease-in-out_infinite]`}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill={color}>
-        <path d="M1 1l5 14 2-6 6-2z" stroke="white" strokeWidth="1" />
-      </svg>
-      <span className="ml-3 rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow" style={{ backgroundColor: color }}>
-        {name}
-      </span>
-    </span>
   );
 }
