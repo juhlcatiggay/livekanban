@@ -2,15 +2,20 @@ import { getServerByName, routePartykitRequest } from "partyserver";
 import { nanoid } from "nanoid";
 import { BOARD_ID_RE, MAX_IMPORT_BYTES, importToOps, type Op } from "@livekanban/protocol";
 import { HOUR_MS } from "./config";
+import { originMatcher } from "./origins";
 
 export { BoardRoom } from "./board-room";
 export { CreationLimiter } from "./limiter";
 
+let matcher: { source: string; matches: (origin: string) => boolean } | undefined;
+
 function allowedOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("Origin");
   if (!origin) return null;
-  const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
-  return allowed.includes(origin) ? origin : null;
+  if (matcher?.source !== env.ALLOWED_ORIGINS) {
+    matcher = { source: env.ALLOWED_ORIGINS, matches: originMatcher(env.ALLOWED_ORIGINS) };
+  }
+  return matcher.matches(origin) ? origin : null;
 }
 
 /** Browsers always send Origin; reject cross-site pages. Non-browser clients omit it. */
@@ -65,16 +70,21 @@ async function createBoard(request: Request, env: Env, cors: HeadersInit): Promi
     }
   }
 
-  if (env.TURNSTILE_SECRET && !(await verifyTurnstile(body.turnstileToken, request, env.TURNSTILE_SECRET))) {
+  // Operator scripts (load tests, restores) authenticate with the admin token instead.
+  const trusted = isAdmin(request, env);
+
+  if (!trusted && env.TURNSTILE_SECRET && !(await verifyTurnstile(body.turnstileToken, request, env.TURNSTILE_SECRET))) {
     return error(403, "Verification failed. Reload the page and try again.");
   }
 
-  const limiter = env.CreationLimiter.get(env.CreationLimiter.idFromName(clientIp(request)));
-  const slot = await limiter.take(Number(env.CREATE_LIMIT_PER_HOUR), HOUR_MS);
-  if (!slot.ok) {
-    return error(429, "Too many new boards from your network. Try again later.", {
-      "Retry-After": String(Math.ceil(slot.retryAfterMs / 1000)),
-    });
+  if (!trusted) {
+    const limiter = env.CreationLimiter.get(env.CreationLimiter.idFromName(clientIp(request)));
+    const slot = await limiter.take(Number(env.CREATE_LIMIT_PER_HOUR), HOUR_MS);
+    if (!slot.ok) {
+      return error(429, "Too many new boards from your network. Try again later.", {
+        "Retry-After": String(Math.ceil(slot.retryAfterMs / 1000)),
+      });
+    }
   }
 
   let ops: Op[] = [];
@@ -103,10 +113,14 @@ function sameToken(a: string, b: string): boolean {
   return crypto.subtle.timingSafeEqual(x, y);
 }
 
+function isAdmin(request: Request, env: Env): boolean {
+  const auth = request.headers.get("Authorization");
+  return !!env.ADMIN_TOKEN && !!auth && sameToken(auth, `Bearer ${env.ADMIN_TOKEN}`);
+}
+
 /** DELETE /admin/boards/:id, for takedowns. Only exists when ADMIN_TOKEN is set. */
 async function adminDelete(request: Request, env: Env, id: string): Promise<Response> {
-  const auth = request.headers.get("Authorization") ?? "";
-  if (!env.ADMIN_TOKEN || !sameToken(auth, `Bearer ${env.ADMIN_TOKEN}`)) return new Response("Unauthorized", { status: 401 });
+  if (!isAdmin(request, env)) return new Response("Unauthorized", { status: 401 });
   if (!BOARD_ID_RE.test(id)) return new Response("Not found", { status: 404 });
   const room = await getServerByName(env.BoardRoom, id);
   const res = await room.fetch(new Request("https://room/admin/delete", { method: "POST" }));

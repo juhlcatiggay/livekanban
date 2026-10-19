@@ -7,7 +7,12 @@ const worker = await unstable_dev("src/index.ts", {
   config: "wrangler.jsonc",
   persist: false,
   // Tests ignore any real keys in .dev.vars.
-  vars: { CREATE_LIMIT_PER_HOUR: "100000", TURNSTILE_SECRET: "", ADMIN_TOKEN: "" },
+  vars: {
+    CREATE_LIMIT_PER_HOUR: "100000",
+    TURNSTILE_SECRET: "",
+    ADMIN_TOKEN: "",
+    ALLOWED_ORIGINS: "http://localhost:3000,https://lk-*.vercel.app",
+  },
   experimental: { disableExperimentalWarning: true },
 });
 const base = `http://${worker.address}:${worker.port}`;
@@ -460,6 +465,11 @@ const tests = {
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);
+    // Wildcards match one hostname label: Vercel previews yes, look-alikes no.
+    assert.equal(await rawPost("/api/boards", "https://lk-git-feature-juhl.vercel.app"), 201);
+    assert.equal(await rawPost("/api/boards", "https://evil.lk-x.vercel.app"), 403);
+    assert.equal(await rawPost("/api/boards", "https://lk-x.vercel.app.evil.example"), 403);
+    assert.equal(await rawPost("/api/boards", "http://lk-x.vercel.app"), 403);
   },
 };
 
