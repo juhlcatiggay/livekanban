@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // Phase 1 exit gate: two tabs share one room.
 test("two visitors on one board see each other join and leave", async ({ browser }) => {
   const alice = await (await browser.newContext()).newPage();
-  await alice.goto("/");
+  await alice.goto("/new");
   await alice.getByRole("button", { name: "Create board" }).click();
   await alice.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(alice.getByText("Live", { exact: true })).toBeVisible();
@@ -21,21 +21,21 @@ test("two visitors on one board see each other join and leave", async ({ browser
   await expect(alice.getByLabel("1 people on this board")).toBeVisible();
 });
 
-test("a board appears in recent boards after visiting", async ({ page }) => {
-  await page.goto("/");
+test("a board you create appears under My own boards", async ({ page }) => {
+  await page.goto("/new");
+  await page.getByLabel("Name", { exact: true }).fill("Roadmap");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\//);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
-  const id = page.url().split("/b/")[1];
 
   await page.goto("/");
-  await expect(page.getByRole("link", { name: new RegExp(id.slice(0, 6)) })).toBeVisible();
+  await expect(page.getByRole("list", { name: "My own boards" }).getByRole("link", { name: "Roadmap" })).toBeVisible();
 });
 
 test("an unknown board shows the expired screen", async ({ page }) => {
   await page.goto(`/b/${"Z".repeat(21)}`);
   await expect(page.getByRole("heading", { name: "This board expired" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create a new board" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create a new board" })).toBeVisible();
 });
 
 // The id check runs inside the streamed Suspense boundary, so the status stays 200
@@ -51,7 +51,7 @@ test("everyone gets a different name on a board, and keeps it when they come bac
   const nameOf = async (page: import("@playwright/test").Page) => (await you(page))!.replace(/ \(you\).*$/, "");
 
   const ada = await (await browser.newContext()).newPage();
-  await ada.goto("/");
+  await ada.goto("/new");
   await ada.getByRole("button", { name: "Create board" }).click();
   await ada.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(ada.getByText("Live", { exact: true })).toBeVisible();

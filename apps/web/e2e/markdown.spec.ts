@@ -12,7 +12,7 @@ const HOSTILE = [
 
 test("descriptions render as Markdown, safely, for everyone", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
-  await ada.goto("/");
+  await ada.goto("/new");
   await ada.getByRole("button", { name: "Create board" }).click();
   await ada.waitForURL(/\/b\//);
   await expect(ada.getByText("Live", { exact: true })).toBeVisible();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DEFAULT_PERMISSIONS, PERMISSION_LABELS, toExport, type Permission } from "@livekanban/protocol";
+import { DEFAULT_PERMISSIONS, PASSWORD, PERMISSION_LABELS, toExport, type Permission } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { confirmAction } from "@/lib/confirm";
 import { downloadFile, slug } from "@/lib/download";
@@ -75,6 +75,7 @@ export function HostMenu({ boardId }: { boardId: string }) {
           </button>
           <p className="mt-1 text-xs text-stone-500">Opens this board as host on another device. Anyone with it becomes a host, so share it only with co-hosts.</p>
         </div>
+        <PasswordSettings />
         <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
           <button
             type="button"
@@ -86,6 +87,80 @@ export function HostMenu({ boardId }: { boardId: string }) {
         </div>
       </div>
     </details>
+  );
+}
+
+/** Set, change or remove the password everyone but the host needs to open the board. */
+function PasswordSettings() {
+  const locked = useBoard((s) => s.locked);
+  const setPassword = useBoard((s) => s.setPassword);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+
+  const save = () => {
+    if (value.length < PASSWORD.min) return;
+    setPassword(value);
+    setValue("");
+    setEditing(false);
+  };
+
+  return (
+    <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
+      <p className="font-medium">Password</p>
+      <p className="mt-0.5 text-xs text-stone-500">
+        {locked ? "On: everyone else needs it to open the board. People already here stay." : "Off: anyone with the link can open the board."}
+      </p>
+      {editing ? (
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <input
+            autoFocus
+            type="text"
+            autoComplete="new-password"
+            aria-label="New board password"
+            placeholder={`At least ${PASSWORD.min} characters`}
+            value={value}
+            maxLength={PASSWORD.max}
+            onChange={(e) => setValue(e.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-stone-300 bg-transparent px-2 py-1 outline-none focus:border-teal-500 dark:border-stone-700"
+          />
+          <button type="submit" disabled={value.length < PASSWORD.min} className="rounded-md bg-teal-600 px-2 py-1 font-medium text-white disabled:opacity-50">
+            Save
+          </button>
+        </form>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-md border border-stone-300 px-2 py-1 hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+          >
+            {locked ? "Change password" : "Set a password"}
+          </button>
+          {locked && (
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: "Remove the password?",
+                  body: "Anyone with the link will be able to open the board again.",
+                  confirmLabel: "Remove password",
+                });
+                if (ok) setPassword(null);
+              }}
+              className="rounded-md px-2 py-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

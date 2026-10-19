@@ -47,7 +47,7 @@ A footnote reference.[^1]
 // Full GitHub-flavored Markdown in a card description (and, compact, on a sticky note).
 test("descriptions and notes render every Markdown feature", async ({ page }, info) => {
   await page.setViewportSize({ width: 1280, height: 1600 });
-  await page.goto("/");
+  await page.goto("/new");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\//);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();

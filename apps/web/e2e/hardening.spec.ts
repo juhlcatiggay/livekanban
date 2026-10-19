@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 async function createBoard(page: Page) {
-  await page.goto("/");
+  await page.goto("/new");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
@@ -91,8 +91,10 @@ test("a JSON export imports into a new board, and Markdown export reads well", a
   const [json] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "JSON (re-importable)" }).click()]);
   const file = (await json.path())!;
 
-  await page.goto("/");
-  await page.getByLabel("or import a JSON export").setInputFiles(file);
+  await page.goto("/new");
+  await page.getByText("Start from a JSON export instead of an empty board").click();
+  await page.getByLabel("Choose a file exported from LiveKanban (Export › JSON)").setInputFiles(file);
+  await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL((url) => /\/b\/[A-Za-z0-9_-]{21}$/.test(url.pathname) && url.href !== original);
   await expect(page.getByRole("button", { name: /^Rename board title: Roadmap/ })).toBeVisible();
   await expect(card(column(page, "Doing"), "Ship export")).toBeVisible();
@@ -101,11 +103,13 @@ test("a JSON export imports into a new board, and Markdown export reads well", a
 });
 
 test("importing something that isn't an export explains the problem", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("or import a JSON export").setInputFiles({
+  await page.goto("/new");
+  await page.getByText("Start from a JSON export instead of an empty board").click();
+  await page.getByLabel("Choose a file exported from LiveKanban (Export › JSON)").setInputFiles({
     name: "trello.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify({ name: "Trello board", lists: [] })),
   });
+  await page.getByRole("button", { name: "Create board" }).click();
   await expect(page.getByText("That file isn't a LiveKanban export")).toBeVisible();
 });

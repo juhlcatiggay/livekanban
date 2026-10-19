@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { byPosition, sortedColumns, type BoardData, type Card } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
+import { isFiltering, matchesFilter, useCardFilter } from "@/lib/card-filter";
 import { useCan } from "@/lib/use-can";
 import { CardDialogFor } from "../kanban/card-dialog-for";
 import { COLOR_STYLES } from "../kanban/colors";
@@ -49,12 +50,15 @@ export function CalendarView({ board }: { board: BoardData }) {
   const [openCardId, setOpenCardId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
+  const filter = useCardFilter();
+  const filtering = isFiltering(filter);
   const days = useMemo(() => monthGrid(month.year, month.month), [month]);
   const columnOrder = useMemo(() => new Map(sortedColumns(board).map((c, i) => [c.id, i])), [board]);
   const byDay = useMemo(() => {
     const out = new Map<string, Entry[]>();
     const add = (day: string, entry: Entry) => out.set(day, [...(out.get(day) ?? []), entry]);
     for (const card of Object.values(board.cards)) {
+      if (filtering && !matchesFilter(card, filter)) continue;
       if (card.startDate && card.startDate !== card.dueDate) add(card.startDate, { card, kind: "start" });
       if (card.dueDate) add(card.dueDate, { card, kind: "due" });
     }
@@ -65,7 +69,7 @@ export function CalendarView({ board }: { board: BoardData }) {
       );
     }
     return out;
-  }, [board.cards, columnOrder]);
+  }, [board.cards, columnOrder, filter, filtering]);
   const undated = Object.values(board.cards).filter((c) => !c.dueDate && !c.startDate).length;
 
   const shift = (delta: number) =>

@@ -6,6 +6,7 @@ import {
   PARTY,
   applyOp,
   encode,
+  opTarget,
   parseOp,
   type BackupInfo,
   type BoardData,
@@ -21,10 +22,21 @@ import {
 import { PARTY_HOST } from "./config";
 import { clearCursors, dropCursor, pushCursor } from "./cursors";
 import { HISTORY_LIMIT, coalesces, invert, type HistoryEntry } from "./history";
+import { forgetBoardPassword, getBoardPassword, saveBoardPassword } from "./board-passwords";
 import { saveIdentity } from "./identity";
 import { forgetBoard, rememberBoard } from "./recent-boards";
 
-export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "expired" | "deleted" | "full";
+export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "expired" | "deleted" | "full" | "password";
+
+/** A page of history as shown in the history panel or a card's Activity list. */
+export interface HistoryView {
+  /** Only ops about this card or note; board-wide when absent. */
+  id?: string;
+  /** Newest first. */
+  entries: CommittedOp[];
+  more: boolean;
+  loading: boolean;
+}
 
 interface BoardState {
   status: ConnectionStatus;
@@ -46,6 +58,14 @@ interface BoardState {
   canRedo: boolean;
   /** Latest trash listing, after requestTrash(). */
   trash: { items: TrashItem[]; backups: BackupInfo[] } | null;
+  /** The board has a password (everyone but the host needs it to open the board). */
+  locked: boolean;
+  /** While status is "password": whether the last password was wrong, and when guessing may resume. */
+  passwordPrompt: { wrong: boolean; retryAt: number | null } | null;
+  /** Board-wide history, once requested; new changes are added live. */
+  history: HistoryView | null;
+  /** One card's history (its Activity list), once requested. */
+  itemHistory: HistoryView | null;
 
   /**
    * Applies `op` optimistically and sends it to the room. Recorded for
@@ -56,6 +76,14 @@ interface BoardState {
   dispatchAll: (ops: Op[]) => void;
   /** Host only: deletes the board for everyone. */
   deleteBoard: () => void;
+  /** Host only: sets or (null) removes the board's password. */
+  setPassword: (password: string | null) => void;
+  /** Tries a password for a protected board (and remembers it if it works). */
+  submitPassword: (password: string) => void;
+  /** Loads history: the first page, or (`older`) the next older page. With `id`, one card's or note's. */
+  requestHistory: (options?: { id?: string; older?: boolean }) => void;
+  /** Stops tracking a history view (board-wide, or `id`'s). */
+  closeHistory: (id?: string) => void;
   /** Who deleted the board, once status is "deleted". */
   deletedBy: string | null;
   undo: () => void;
@@ -88,9 +116,17 @@ const initialState = {
   canUndo: false,
   canRedo: false,
   trash: null,
+  locked: false,
+  passwordPrompt: null,
+  history: null,
+  itemHistory: null,
   dispatch: noop,
   dispatchAll: noop,
   deleteBoard: noop,
+  setPassword: noop,
+  submitPassword: noop,
+  requestHistory: noop,
+  closeHistory: noop,
   deletedBy: null,
   undo: noop,
   redo: noop,
@@ -157,7 +193,31 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
     if (!confirmed || c.seq <= seq) return;
     confirmed = applyOp(confirmed, c.op, c);
     seq = c.seq;
+    addToHistory(c);
   };
+
+  /** Open history views show new changes as they're committed. */
+  const addToHistory = (c: CommittedOp) => {
+    const { history, itemHistory } = useBoard.getState();
+    const prepend = (view: HistoryView) => (view.entries.some((e) => e.seq === c.seq) ? view : { ...view, entries: [c, ...view.entries] });
+    if (history) set({ history: prepend(history) });
+    if (itemHistory && opTarget(c.op) === itemHistory.id) set({ itemHistory: prepend(itemHistory) });
+  };
+
+  const requestHistory = ({ id, older = false }: { id?: string; older?: boolean } = {}) => {
+    const key = id ? "itemHistory" : "history";
+    const current = useBoard.getState()[key];
+    const sameView = current && current.id === id;
+    if (older && (!sameView || !current.more || current.loading)) return;
+    const before = older && sameView ? current.entries.at(-1)?.seq : undefined;
+    set({ [key]: { id, entries: older && sameView ? current.entries : [], more: false, loading: true } });
+    send({ t: "history", before, id });
+  };
+
+  /** The password this tab is trying, or the remembered one. */
+  let password = getBoardPassword(boardId);
+  const sayHello = () =>
+    socket.send(encode({ t: "hello", ...identity, custom: identity.custom ?? false, lastSeq: confirmed ? seq : 0, hostKey, password }));
 
   const sendOp = (p: PendingOp) => send({ t: "op", cid: p.cid, op: p.wire });
 
@@ -252,6 +312,19 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
       dispatch,
       dispatchAll,
       deleteBoard: () => send({ t: "deleteBoard" }),
+      setPassword: (next) => {
+        send({ t: "setPassword", password: next });
+        // The host doesn't need it, but their other devices without the host link would.
+        if (next) saveBoardPassword(boardId, next);
+        else forgetBoardPassword(boardId);
+      },
+      submitPassword: (next) => {
+        password = next;
+        set({ passwordPrompt: { wrong: false, retryAt: null } });
+        if (socket.readyState === WebSocket.OPEN) sayHello();
+      },
+      requestHistory,
+      closeHistory: (id) => set(id ? { itemHistory: null } : { history: null }),
       undo: () => step("undo"),
       redo: () => step("redo"),
       requestTrash: () => send({ t: "trash" }),
@@ -275,9 +348,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
     socket.close();
   };
 
-  socket.addEventListener("open", () => {
-    socket.send(encode({ t: "hello", ...identity, custom: identity.custom ?? false, lastSeq: confirmed ? seq : 0, hostKey }));
-  });
+  socket.addEventListener("open", sayHello);
 
   socket.addEventListener("message", (event: MessageEvent<string>) => {
     const msg = JSON.parse(event.data) as ServerMessage;
@@ -303,9 +374,13 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
           selfPeer: msg.you,
           keptUntil: msg.keptUntil,
           me: { ...me, name: msg.you.name, color: msg.you.color },
+          locked: msg.locked,
+          passwordPrompt: null,
           peers: Object.fromEntries(msg.peers.map((p) => [p.connectionId, p])),
         });
         me = { ...me, name: msg.you.name, color: msg.you.color };
+        // It worked, so remember it for next time.
+        if (password) saveBoardPassword(boardId, password);
         recompute();
         for (const p of pending) sendOp(p);
         if (Object.keys(presence).length) send({ t: "presence", patch: presence });
@@ -377,7 +452,26 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
         set({ deletedBy: msg.by });
         stop("deleted");
         break;
-      case "deleteRefused":
+      case "passwordRequired":
+        if (msg.wrong) {
+          forgetBoardPassword(boardId);
+          password = undefined;
+        }
+        set({ status: "password", passwordPrompt: { wrong: msg.wrong, retryAt: msg.retryAfterMs ? Date.now() + msg.retryAfterMs : null } });
+        break;
+      case "locked":
+        set({ locked: msg.locked });
+        break;
+      case "history": {
+        const key = msg.id ? "itemHistory" : "history";
+        const current = useBoard.getState()[key];
+        // A reply for a view that's been closed or switched to another card.
+        if (!current || current.id !== msg.id) break;
+        const known = new Set(current.entries.map((e) => e.seq));
+        set({ [key]: { id: msg.id, entries: [...current.entries, ...msg.entries.filter((e) => !known.has(e.seq))], more: msg.more, loading: false } });
+        break;
+      }
+      case "refused":
         set({ error: msg.reason });
         break;
     }
@@ -408,6 +502,9 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
       dispatch: noop,
       dispatchAll: noop,
       deleteBoard: noop,
+      setPassword: noop,
+      submitPassword: noop,
+      requestHistory: noop,
       undo: noop,
       redo: noop,
       requestTrash: noop,

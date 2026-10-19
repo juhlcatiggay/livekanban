@@ -4,7 +4,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 // box selection with multi-card drag, and deleting a board.
 
 async function createBoard(page: Page) {
-  await page.goto("/");
+  await page.goto("/new");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
@@ -232,9 +232,9 @@ test("the host can delete the whole board after typing its name", async ({ brows
   await host.getByRole("textbox", { name: "board title" }).press("Enter");
   const url = host.url();
   const guest = await visitor(browser, url);
-  await expect(guest.getByText("Host settings")).toHaveCount(0);
+  await expect(guest.getByText("Host settings", { exact: true })).toHaveCount(0);
 
-  await host.getByText("Host settings").click();
+  await host.getByText("Host settings", { exact: true }).click();
   await host.getByRole("button", { name: "Delete board…" }).click();
   const confirm = host.getByRole("alertdialog", { name: "Delete this board for everyone?" });
   const remove = confirm.getByRole("button", { name: "Delete board" });

@@ -26,7 +26,7 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* Where a #mention leads: shake for a second with a highlight ring (see lib/jump.ts). */
+/* Where a mention leads: shake for a second with a highlight ring (see lib/jump.ts). */
 @keyframes lk-shake {
   0%,
   100% {
@@ -48,8 +48,19 @@ body {
   border-radius: 0.5rem;
   box-shadow: 0 0 0 3px #14b8a6;
 }
+/* The landing page's demo cursors wander a little. */
+@keyframes lk-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(18px, -10px);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .lk-shake {
+  .lk-shake,
+  [class*="lk-drift"] {
     animation: none;
   }
 }

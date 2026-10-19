@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // Regression tests for GitHub issues, named by issue number.
 
 async function createBoard(page: Page) {
-  await page.goto("/");
+  await page.goto("/new");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
@@ -40,7 +40,7 @@ test("#11 Create board works again after going back to the landing page", async 
   await createBoard(page);
   const first = page.url();
   await page.goBack();
-  await page.waitForURL((url) => url.pathname === "/");
+  await page.waitForURL((url) => url.pathname === "/new");
 
   const button = page.getByRole("button", { name: "Create board" });
   await expect(button).toBeEnabled();
@@ -179,14 +179,14 @@ test("#12 the board creator is host and can make parts view-only for others", as
   await expect(guest.getByText("Live", { exact: true })).toBeVisible();
 
   // Only the creator gets host settings; everyone sees who the host is.
-  await expect(host.getByText("Host settings")).toBeVisible();
-  await expect(guest.getByText("Host settings")).toHaveCount(0);
+  await expect(host.getByText("Host settings", { exact: true })).toBeVisible();
+  await expect(guest.getByText("Host settings", { exact: true })).toHaveCount(0);
   await expect(guest.getByRole("list", { name: /people on this board/ }).getByText("Host")).toHaveCount(1);
 
   // Lock down cards and moving.
-  await host.getByText("Host settings").click();
-  await host.getByLabel("add, edit and delete cards and columns").uncheck();
-  await host.getByLabel("move cards and columns").uncheck();
+  await host.getByText("Host settings", { exact: true }).click();
+  await host.getByLabel("add, edit and delete cards and columns", { exact: true }).uncheck();
+  await host.getByLabel("move cards and columns", { exact: true }).uncheck();
   await host.keyboard.press("Escape");
 
   await expect(guest.getByRole("status").filter({ hasText: /^View only/ })).toContainText("move cards and columns");
@@ -214,13 +214,13 @@ test("#12 the board creator is host and can make parts view-only for others", as
   await expect(guest.getByRole("status").filter({ hasText: /^View only/ })).toBeVisible();
 
   // A host link makes another device a host too.
-  await host.getByText("Host settings").click();
+  await host.getByText("Host settings", { exact: true }).click();
   await host.getByRole("button", { name: "Copy host link" }).click();
   const link = await host.evaluate(() => navigator.clipboard.readText());
   expect(link).toMatch(/#host=[A-Za-z0-9_-]{32}$/);
   const cohost = await (await browser.newContext()).newPage();
   await cohost.goto(link.replace(/^https?:\/\/[^/]+/, ""));
-  await expect(cohost.getByText("Host settings")).toBeVisible();
+  await expect(cohost.getByText("Host settings", { exact: true })).toBeVisible();
   expect(cohost.url()).not.toContain("#host=");
   await expect(todo(cohost).getByRole("button", { name: "+ Add card" })).toBeVisible();
 });

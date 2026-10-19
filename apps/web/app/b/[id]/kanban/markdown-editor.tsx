@@ -7,8 +7,8 @@ import { useBoard } from "@/lib/board-store";
 /**
  * A Markdown textarea with a formatting toolbar, for people who don't know
  * Markdown: select text and press Bold, or press a button to start a list.
- * Typing # opens a picker of cards and notes; only a picked item becomes a
- * mention, so "Top #1 Fan" stays plain text.
+ * Typing @ opens a picker of cards and notes; only a picked item becomes a
+ * mention, so "Top #1 Fan" or an email address stays plain text.
  *
  * `onBlur` fires only when focus leaves the whole editor (toolbar and pickers
  * included), so a note can finish editing on blur without the toolbar closing it.
@@ -32,15 +32,15 @@ interface MarkdownEditorProps {
 }
 
 type Popover = { kind: "link" | "image"; text: string; url: string } | null;
-/** `left`/`top`: where the "#" is, relative to the editor, so the list opens under it. */
+/** `left`/`top`: where the "@" is, relative to the editor, so the list opens under it. */
 type Picker = { start: number; query: string; active: number; left: number; top: number } | null;
 
 /**
- * "#" then up to 30 characters right before the caret, at a word start. The
- * query stops at spaces, brackets and parentheses, so a just-inserted
- * "[#1](#1)" doesn't reopen the list.
+ * "@" then up to 30 characters right before the caret, at a word start (so
+ * "ada@example.com" doesn't open it). The query stops at spaces, brackets and
+ * parentheses, so a just-inserted "[@1](#1)" doesn't reopen the list.
  */
-const PICKER_TRIGGER = /(?:^|[\s([])#([^\s#[\]()]{0,30})$/;
+const PICKER_TRIGGER = /(?:^|[\s([])@([^\s@[\]()]{0,30})$/;
 
 export function MarkdownEditor({
   value,
@@ -147,12 +147,12 @@ export function MarkdownEditor({
     replace(start, end, md, lead.length + 2, lead.length + 8);
   };
 
-  /** Inserts "#" (opening the picker) unless the caret already follows one. */
+  /** Inserts "@", which opens the picker. */
   const startMention = () => {
     const { start, end } = selection();
     const v = ref.current!.value;
     const needsSpace = start > 0 && !/[\s([]/.test(v[start - 1]);
-    replace(start, end, needsSpace ? " #" : "#");
+    replace(start, end, needsSpace ? " @" : "@");
     requestAnimationFrame(updatePicker);
   };
 
@@ -401,7 +401,7 @@ const TOOLS: { id: ToolId; label: string; icon: React.ReactNode; hint?: string }
   { id: "link", label: "Link", hint: "Ctrl+K", icon: "🔗" },
   { id: "image", label: "Image", icon: "🖼" },
   { id: "table", label: "Table", icon: "▦" },
-  { id: "mention", label: "Mention a card or note", hint: "#", icon: "#" },
+  { id: "mention", label: "Mention a card or note", hint: "@", icon: "@" },
 ];
 
 interface PickerMatch {

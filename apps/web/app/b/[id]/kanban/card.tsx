@@ -30,7 +30,7 @@ export function CardFace({ card, lifted = false, selected = false }: { card: Car
         selected ? "border-teal-500 ring-2 ring-teal-500/60" : "border-stone-200 dark:border-stone-700"
       } ${lifted ? "rotate-2 shadow-lg ring-2 ring-teal-500" : ""}`}
     >
-      {card.color && <span className={`absolute inset-x-0 top-0 z-10 h-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
+      {card.color && <span className={`absolute inset-y-0 left-0 z-10 w-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
       {cover && (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary user URLs can't go through next/image.
         <img src={cover.src} alt={cover.alt} referrerPolicy="no-referrer" loading="lazy" draggable={false} className="block max-h-40 w-full object-cover" />
