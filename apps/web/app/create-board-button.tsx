@@ -76,9 +76,9 @@ export function CreateBoardButton({ label = "Create board", allowImport = false 
         </label>
       )}
       {turnstile.widget}
-      {turnstile.failed && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          Verification couldn&apos;t load. Disable content blockers for this site or try another browser.
+      {turnstile.problem && (
+        <p role="alert" className="max-w-sm text-center text-sm text-red-600 dark:text-red-400">
+          {turnstile.problem}
         </p>
       )}
       {error && (
