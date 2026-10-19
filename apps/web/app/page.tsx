@@ -66,14 +66,14 @@ export default function Home() {
 
         <section id="features" aria-labelledby="features-heading" className="scroll-mt-12 bg-gray-100 py-20 dark:bg-gray-900/50">
           <div className="mx-auto max-w-[980px] px-4">
-            <h2 id="features-heading" className="text-center text-4xl font-semibold sm:text-5xl">
+            <h2 id="features-heading" className="reveal text-center text-4xl font-semibold sm:text-5xl">
               Simple to start.
               <br />
               <span className="text-gray-500">Built for working together.</span>
             </h2>
             <ul className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {FEATURES.map((f) => (
-                <li key={f.title} className="rounded-[18px] bg-white p-7 dark:bg-gray-900">
+                <li key={f.title} className="reveal rounded-[18px] bg-white p-7 dark:bg-gray-900">
                   <span className="text-accent-600 dark:text-accent-400">
                     <Icon name={f.icon} className="h-7 w-7" />
                   </span>
@@ -86,12 +86,12 @@ export default function Home() {
         </section>
 
         <section id="how" aria-labelledby="how-heading" className="mx-auto max-w-[980px] scroll-mt-12 px-4 py-20">
-          <h2 id="how-heading" className="text-center text-4xl font-semibold sm:text-5xl">
+          <h2 id="how-heading" className="reveal text-center text-4xl font-semibold sm:text-5xl">
             How it works.
           </h2>
           <ol className="mt-12 grid gap-10 text-center sm:grid-cols-3">
             {STEPS.map((s, i) => (
-              <li key={s.title}>
+              <li key={s.title} className="reveal">
                 <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[17px] font-semibold text-accent-600 dark:bg-gray-900 dark:text-accent-400">
                   {i + 1}
                 </span>

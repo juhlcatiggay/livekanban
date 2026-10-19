@@ -39,3 +39,30 @@ test("visitors can drag the demo cards from To Do to Doing to Done", async ({ pa
   await expect(column(page, "To Do").getByRole("button", { name: /^Pick a domain/ })).toBeVisible();
   expect(errors.filter((e) => /hydrat/i.test(e))).toEqual([]);
 });
+
+test("over the demo, your cursor becomes a green \"You\" cursor that follows the pointer", async ({ page }) => {
+  await page.goto("/");
+  const demo = page.getByRole("group", { name: /^Try it/ });
+  await demo.scrollIntoViewIfNeeded();
+  const you = page.locator("[data-you-cursor]");
+  await expect(you).toHaveCSS("opacity", "0");
+  expect(await demo.evaluate((el) => getComputedStyle(el).cursor)).toBe("none");
+
+  const box = (await demo.boundingBox())!;
+  await page.mouse.move(box.x + 200, box.y + 150, { steps: 3 });
+  await expect(you).toHaveCSS("opacity", "1");
+  await expect(you).toContainText("You");
+  const at = (await you.boundingBox())!;
+  expect(Math.abs(at.x - (box.x + 199))).toBeLessThan(2);
+  expect(Math.abs(at.y - (box.y + 149))).toBeLessThan(2);
+
+  await page.mouse.move(box.x - 50, box.y - 50);
+  await expect(you).toHaveCSS("opacity", "0");
+});
+
+test("in-page links scroll smoothly to their section", async ({ page }) => {
+  await page.goto("/");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("smooth");
+  await page.getByRole("link", { name: "My boards" }).click();
+  await expect(page.getByRole("heading", { name: "My boards." })).toBeInViewport();
+});

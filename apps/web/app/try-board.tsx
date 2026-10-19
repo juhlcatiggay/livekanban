@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -147,7 +147,7 @@ export function TryBoard() {
     <div
       role="group"
       aria-label="Try it: drag cards between To Do, Doing and Done"
-      className="relative select-none rounded-[22px] border border-black/5 bg-gray-100 p-4 text-left shadow-[0_30px_80px_-20px_rgb(0_0_0/0.25)] sm:p-5 dark:border-white/10 dark:bg-gray-900"
+      className="lk-own-cursor relative select-none rounded-[22px] border border-black/5 bg-gray-100 p-4 text-left shadow-[0_30px_80px_-20px_rgb(0_0_0/0.25)] sm:p-5 dark:border-white/10 dark:bg-gray-900"
     >
       <div className="mb-4 flex items-center justify-between">
         <span className="flex items-center gap-1.5">
@@ -192,6 +192,8 @@ export function TryBoard() {
       {/* Two make-believe teammates; they never get in the way of the pointer. */}
       <Cursor name="Storm" color="#0071e3" className="left-[24%] top-[52%]" />
       <Cursor name="Thor" color="#ff9500" className="left-[62%] top-[78%]" />
+      {/* Your own cursor, like everyone sees on a real board. */}
+      <YouCursor />
     </div>
   );
 }
@@ -258,12 +260,55 @@ function DemoCardFace({ card, lifted = false }: { card: DemoCard; lifted?: boole
 function Cursor({ name, color, className }: { name: string; color: string; className: string }) {
   return (
     <span aria-hidden className={`pointer-events-none absolute ${className} animate-[lk-drift_7s_ease-in-out_infinite]`}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill={color}>
+      <CursorShape name={name} color={color} />
+    </span>
+  );
+}
+
+function CursorShape({ name, color }: { name: string; color: string }) {
+  return (
+    <>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill={color} className="drop-shadow-sm">
         <path d="M1 1l5 14 2-6 6-2z" stroke="white" strokeWidth="1" />
       </svg>
-      <span className="ml-3 rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow" style={{ backgroundColor: color }}>
+      <span className="ml-3 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow" style={{ backgroundColor: color }}>
         {name}
       </span>
+    </>
+  );
+}
+
+
+/**
+ * Your own cursor over the demo (the element it's placed in): follows the
+ * pointer 1:1 by writing the transform directly, with no React render per
+ * move. Mouse and pen only, so touch screens behave as usual.
+ */
+function YouCursor() {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const area = el?.parentElement;
+    if (!el || !area) return;
+    const move = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      // The arrow's tip is at (1, 1) in its 16px box.
+      el.style.transform = `translate3d(${e.clientX - 1}px, ${e.clientY - 1}px, 0)`;
+      el.style.opacity = "1";
+    };
+    const hide = () => (el.style.opacity = "0");
+    area.addEventListener("pointerenter", move);
+    area.addEventListener("pointermove", move);
+    area.addEventListener("pointerleave", hide);
+    return () => {
+      area.removeEventListener("pointerenter", move);
+      area.removeEventListener("pointermove", move);
+      area.removeEventListener("pointerleave", hide);
+    };
+  }, []);
+  return (
+    <span ref={ref} aria-hidden data-you-cursor className="pointer-events-none fixed left-0 top-0 z-[1000] opacity-0 transition-opacity duration-150">
+      <CursorShape name="You" color="#34c759" />
     </span>
   );
 }

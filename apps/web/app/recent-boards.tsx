@@ -34,7 +34,7 @@ export function MyBoards() {
 
   return (
     <section id="my-boards" aria-labelledby="my-boards-heading" className="mx-auto w-full max-w-[980px] scroll-mt-12 px-4 py-20">
-      <h2 id="my-boards-heading" className="text-4xl font-semibold sm:text-5xl">
+      <h2 id="my-boards-heading" className="reveal text-4xl font-semibold sm:text-5xl">
         My boards.
       </h2>
       <p className="mt-3 text-[17px] text-gray-600 dark:text-gray-400">Every board you&apos;ve opened in this browser. No account needed.</p>
@@ -72,7 +72,7 @@ function BoardGroup({
   empty: string;
 }) {
   return (
-    <div className="mt-12">
+    <div className="reveal mt-12">
       <h3 className="text-[21px] font-semibold">{title}</h3>
       <p className="mt-1 text-[15px] text-gray-500">{boards.length ? hint : empty}</p>
       {boards.length > 0 && (

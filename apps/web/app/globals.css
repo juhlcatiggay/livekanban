@@ -282,6 +282,42 @@ dialog[open]::backdrop {
   animation: lk-scrim 200ms var(--ease-apple);
 }
 
+/* The landing demo draws your cursor itself ("You"), so hide the system one there; touch has none. */
+@media (pointer: fine) {
+  .lk-own-cursor,
+  .lk-own-cursor * {
+    cursor: none !important;
+  }
+}
+
+/* In-page links glide to their section instead of jumping. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/*
+ * Sections rise into view as you scroll to them, tied to scroll position
+ * (scroll-driven animations), so scrolling back reverses them. Browsers
+ * without support, and reduced motion, simply show the content.
+ */
+@keyframes lk-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+  }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: lk-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 28%;
+    }
+  }
+}
+
 /* Where a mention leads: shake for a second with a highlight ring (see lib/jump.ts). */
 @keyframes lk-shake {
   0%,
