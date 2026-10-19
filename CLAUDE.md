@@ -29,13 +29,16 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 
 - Landing page with one button: "Create board". It mints an unguessable board ID and redirects to `/b/<id>`.
 - Sharing = copying the URL. Anyone with the link can view and edit.
-- First visit assigns a random display name and color ("Teal Otter"), stored in localStorage and editable from the avatar menu.
+- Each board gives every visitor a Marvel character name (e.g. "Storm") and color that nobody else on that board has, and remembers it in a `members` table so reopening the board brings back the same name. A random client ID in localStorage identifies the browser. Names are editable from the avatar menu; a name someone else on the board already has is refused, and a chosen name is asked for on boards the browser joins later.
 - "My recent boards" list on the landing page, read from localStorage only (no server account).
 
 **2. Kanban**
 
 - Columns: add, rename, reorder by drag, delete (with undo), optional WIP limit.
-- Cards: title, description (markdown), color, labels, assignee name (free text), due date.
+- Cards: title, description (markdown), color (a strip along the top), labels, up to 10 assignees (free-text names, suggested from people on the board), due date.
+- Every card and note gets a board-wide number (`#12`) from one counter the room controls. Writing `#12` in a description or note links to that item: clicking jumps to it (switching tabs if needed), shakes it for a second, then opens it.
+- Descriptions show as rendered markdown (GitHub-flavored: headings, tables, task lists, code with highlighting) with an Edit button; images load only after a click.
+- Deleting a card, column or note asks "Are you sure?" first (and can still be undone or restored from the trash).
 - Drag cards within and across columns; keyboard drag for accessibility.
 - Undo/redo for your own last 20 actions; a board-level trash for 7 days so a careless visitor can't wipe a board permanently.
 - Export board as JSON or Markdown.
@@ -54,7 +57,8 @@ Five feature areas, each with a clear "done" bar; realtime presence is the hard 
 - A second tab on every board: a free-form canvas of sticky notes for announcements, links and loose ideas.
 - Notes: text, color, size; drag anywhere, with the same live cursors and drag visibility as the kanban.
 - Pin a note to the top as an announcement banner shown on the kanban tab.
-- Convert a note to a card (choose a column), and a card to a note.
+- Convert a note to a card (choose a column). Cards are not moved to the bulletin; mention a note with `#n` instead.
+- Two layouts, chosen per viewer and remembered: sticky notes on the canvas, or a card stack with the newest note on top, each showing its number, when it was created and when and by whom it was last edited.
 
 **5. Expiry**
 
@@ -149,6 +153,7 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 | `cursors` | room → all | presence | `["C", [[connectionId, anchor, fx, fy], …]]`: latest position of everyone who moved this tick | ≤ 60/s per viewer |
 | `presence` | client → room | presence | `editing` target ID or null, `idle`, `away` | on change |
 | `profile` | client → room | presence | name, color | on change |
+| `profileRejected` | room → client | presence | reason (name taken on this board) | on refused rename |
 | `peer` | room → all | presence | the updated peer (editing, holding, idle, away, name, color), also sent to that peer | on change |
 | `lock` / `unlock` | client → room | presence | card ID; a granted lock arrives as `peer.holding` | on drag start/end |
 | `lockDenied` | room → client | presence | card ID, holder's name | on contention |
@@ -163,11 +168,12 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON) |
+| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON), next\_number |
 | `columns` | `id`, `title`, `position`, `color`, `wip_limit`, `deleted_at` | `position` = fractional index string |
-| `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignee`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
-| `notes` | `id`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
+| `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignees` (JSON), `number`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
+| `notes` | `id`, `number`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `created_at`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
 | `ops_log` | `seq`, `op` (JSON), `actor_name`, `at` | last 1,000 ops for reconnect replay and an activity feed |
+| `members` | `client_id`, `name`, `color`, `joined_at` | everyone who has opened the board; names unique per board (case-insensitive). Client IDs never leave the room |
 | `backups` | `day`, `at`, `board` (JSON) | one per UTC day with activity, 7 kept; boards over ~1.9 MB of JSON skip backups (SQLite's 2 MB value limit) |
 
 **Limits per board** (enforced in the room): 50 columns, 2,000 cards, 500 notes, 200 characters per title, 10,000 per description or note, notes 120–640 px per side, 50 concurrent connections. These keep every board well under the 10 MB-class sizes where snapshots get slow.
@@ -194,7 +200,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 - Turnstile challenge on "Create board" and a per-IP creation limit (20 boards/hour) in the Worker. The limit uses a small `CreationLimiter` Durable Object per IP, because Workers' built-in rate limiter only supports 10 s or 60 s windows.
 - Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 12,000-character max message (a 4 KB cap could not carry a 10,000-character description); exceeding them drops messages, repeated abuse closes the socket.
 - The per-board size and connection caps from the Data model section.
-- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links). Implemented with react-markdown: raw HTML is skipped, unsafe URL schemes are stripped, links get `rel="noopener nofollow noreferrer ugc"`, and images render as their alt text so cards can't load trackers.
+- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links). Implemented with react-markdown: raw HTML is skipped, unsafe URL schemes are stripped, links get `rel="noopener nofollow noreferrer ugc"`, and images show a "Load image from {host}" button and are fetched only on click, with no referrer, so cards can't load trackers by themselves.
 - Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep a daily backup of the board for 7 days (downloadable from the trash and importable as a new board). Converting a note to a card (or back) replaces the source outright, so the trash never offers a duplicate.
 - A "Report board" link and an admin script to delete a board by ID, since anonymous public boards will eventually host content you must take down.
 
