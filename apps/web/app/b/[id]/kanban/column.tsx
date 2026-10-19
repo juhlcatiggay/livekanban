@@ -5,6 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { LIMITS, positionBetween, type Card, type Column, type Peer } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import type { PresenceIndex } from "@/lib/presence-index";
 import { InlineEdit } from "./inline-edit";
 import { EditingBadge, SortableCard } from "./card";
@@ -129,6 +130,7 @@ function ColumnHeader({
 
 function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const menu = useDismiss();
   const [wip, setWip] = useState(column.wipLimit?.toString() ?? "");
 
   const saveWip = () => {
@@ -141,7 +143,7 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
   };
 
   return (
-    <details className="relative">
+    <details ref={menu} className="relative">
       <summary
         className="cursor-pointer list-none rounded px-1.5 text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800"
         aria-label={`Column ${column.title} options`}
@@ -159,13 +161,20 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
             value={wip}
             onChange={(e) => setWip(e.target.value)}
             onBlur={saveWip}
-            onKeyDown={(e) => e.key === "Enter" && saveWip()}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              saveWip();
+              closeMenu(menu);
+            }}
             className="w-16 rounded border border-stone-300 bg-transparent px-1 py-0.5 dark:border-stone-700"
           />
         </label>
         <button
           type="button"
-          onClick={onDelete}
+          onClick={() => {
+            closeMenu(menu);
+            onDelete();
+          }}
           className="mt-1 w-full rounded px-1 py-1 text-left text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
         >
           Delete column

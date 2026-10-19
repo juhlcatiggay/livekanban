@@ -12,6 +12,7 @@ import {
   type Peer,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import { EditingBadge } from "../kanban/card";
 import { COLOR_STYLES } from "../kanban/colors";
 import { clampToCanvas } from "./placement";
@@ -270,18 +271,24 @@ function NoteMenu({
   onDelete: () => void;
 }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const menu = useDismiss();
   const item = "w-full rounded px-2 py-1 text-left hover:bg-stone-100 dark:hover:bg-stone-800";
+  // Actions close the menu; recoloring keeps it open so colors can be compared.
+  const act = (fn: () => void) => () => {
+    closeMenu(menu);
+    fn();
+  };
 
   return (
-    <details className="absolute right-1 top-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 open:opacity-100">
+    <details ref={menu} className="absolute right-1 top-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 open:opacity-100">
       <summary className="cursor-pointer list-none rounded px-1.5 text-stone-600 hover:bg-black/10" aria-label="Note options">
         ⋯
       </summary>
       <div className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-stone-200 bg-white p-1.5 text-sm text-stone-900 shadow-lg dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100">
-        <button type="button" className={item} onClick={onEdit}>
+        <button type="button" className={item} onClick={act(onEdit)}>
           Edit text
         </button>
-        <button type="button" className={item} onClick={() => dispatch({ kind: "board.pin", noteId: pinned ? null : note.id })}>
+        <button type="button" className={item} onClick={act(() => dispatch({ kind: "board.pin", noteId: pinned ? null : note.id }))}>
           {pinned ? "Unpin announcement" : "Pin as announcement"}
         </button>
         <div className="flex flex-wrap gap-1.5 px-2 py-1.5" role="group" aria-label="Note color">
@@ -304,22 +311,22 @@ function NoteMenu({
                 key={col.id}
                 type="button"
                 className={item}
-                onClick={() =>
+                onClick={act(() =>
                   dispatch({
                     kind: "note.toCard",
                     id: note.id,
                     cardId: newItemId(),
                     columnId: col.id,
                     position: positionBetween(lastCardPosition(col.id), null),
-                  })
-                }
+                  }),
+                )}
               >
                 → {col.title}
               </button>
             ))}
           </div>
         )}
-        <button type="button" className={`${item} mt-1 border-t border-stone-200 text-red-600 dark:border-stone-700 dark:text-red-400`} onClick={onDelete}>
+        <button type="button" className={`${item} mt-1 border-t border-stone-200 text-red-600 dark:border-stone-700 dark:text-red-400`} onClick={act(onDelete)}>
           Delete note
         </button>
       </div>

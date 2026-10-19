@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MAX_NAME_LENGTH, type Peer } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { IDENTITY_COLORS } from "@/lib/identity";
+import { useDismiss } from "@/lib/use-dismiss";
 
 function initials(name: string) {
   return name
@@ -67,6 +68,7 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
   const me = useBoard((s) => s.me)!;
   const setProfile = useBoard((s) => s.setProfile);
   const [name, setName] = useState(me.name);
+  const menu = useDismiss();
 
   const saveName = () => {
     const next = name.trim();
@@ -75,7 +77,7 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <details className="relative">
+    <details ref={menu} className="relative">
       <summary className="cursor-pointer list-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-teal-500" aria-label="Your name and color">
         {children}
       </summary>

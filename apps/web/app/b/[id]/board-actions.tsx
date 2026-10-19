@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toExport, toMarkdown, type BoardData, type Op, type TrashItem } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { downloadFile, slug } from "@/lib/download";
+import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 
 const iconButton =
   "rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-stone-800";
@@ -36,10 +37,10 @@ export function BoardActions({ board }: { board: BoardData }) {
 function ExportMenu({ board }: { board: BoardData }) {
   const name = slug(board.title);
   const item = "w-full rounded px-2 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800";
-  const menu = useRef<HTMLDetailsElement>(null);
+  const menu = useDismiss();
   const save = (filename: string, text: string, type: string) => {
     downloadFile(filename, text, type);
-    if (menu.current) menu.current.open = false;
+    closeMenu(menu);
   };
   return (
     <details ref={menu} className="relative">
