@@ -1,5 +1,7 @@
 import {
   CONVERTED_NOTE_SIZE,
+  DEFAULT_PERMISSIONS,
+  parsePermissions,
   LIMITS,
   cardToNoteText,
   noteToCardFields,
@@ -15,6 +17,7 @@ import {
   type NotePatch,
   type Op,
   type BackupInfo,
+  type Permissions,
   type TrashItem,
 } from "@livekanban/protocol";
 
@@ -196,12 +199,14 @@ export class BoardStorage {
   }
 
   /** Initializes a brand-new board, with starter columns unless it's about to be filled by an import. */
-  init(now: number, newId: () => string, { starterColumns = true } = {}) {
+  init(now: number, newId: () => string, { starterColumns = true, hostKey }: { starterColumns?: boolean; hostKey?: string } = {}) {
     this.migrate();
     this.transaction(() => {
       this.setMeta("created_at", String(now));
       this.setMeta("last_activity_at", String(now));
       this.setMeta("title", "Untitled board");
+      // Kept only in this board's own database, which never leaves the room.
+      if (hostKey) this.setMeta("host_key", hostKey);
       if (!starterColumns) return;
       let position: string | null = null;
       for (const title of ["To do", "Doing", "Done"]) {
@@ -209,6 +214,31 @@ export class BoardStorage {
         this.sql.exec("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)", newId(), title, position);
       }
     });
+  }
+
+  // ---- host and permissions (issue #12) ----
+
+  hasHost(): boolean {
+    return !!this.getMeta("host_key");
+  }
+
+  /** Constant-time check of a presented host key. */
+  isHostKey(key: string | undefined): boolean {
+    const stored = this.getMeta("host_key");
+    if (!stored || !key) return false;
+    const a = new TextEncoder().encode(key);
+    const b = new TextEncoder().encode(stored);
+    return a.length === b.length && crypto.subtle.timingSafeEqual(a, b);
+  }
+
+  permissions(): Permissions {
+    const raw = this.getMeta("permissions");
+    return (raw && parsePermissions(JSON.parse(raw))) || DEFAULT_PERMISSIONS;
+  }
+
+  /** True if `id` is a live note (locks on notes need bulletin rights, on cards move rights). */
+  isNote(id: string): boolean {
+    return this.sql.exec("SELECT 1 FROM notes WHERE id = ? AND deleted_at IS NULL", id).toArray().length > 0;
   }
 
   // ---- activity, trash and backups (driven by the room's alarm) ----
@@ -325,6 +355,8 @@ export class BoardStorage {
       cards,
       notes,
       pinnedNoteId: this.getMeta("pinned_note_id") || null,
+      permissions: this.permissions(),
+      hasHost: this.hasHost(),
     };
   }
 
@@ -583,6 +615,11 @@ export class BoardStorage {
         this.sql.exec("UPDATE notes SET deleted_at = NULL WHERE id = ?", op.id);
         return { kind: "note.restore", id: op.id, note: toNote({ ...row!, deleted_at: null }) };
       }
+
+      case "board.permissions":
+        // Who may send this is checked by the room; storage just records it.
+        this.setMeta("permissions", JSON.stringify(op.permissions));
+        return op;
 
       case "board.pin":
         if (op.noteId) this.liveNote(op.noteId);

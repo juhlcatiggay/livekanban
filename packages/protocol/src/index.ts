@@ -9,6 +9,7 @@ import { ITEM_ID_RE, parseOp } from "./ops";
 export * from "./board";
 export * from "./export";
 export * from "./ops";
+export * from "./permissions";
 
 /** PartyServer namespace: the kebab-cased `BoardRoom` binding name. */
 export const PARTY = "board-room";
@@ -66,6 +67,8 @@ export interface Peer extends Identity {
   idle: boolean;
   /** Tab hidden; their cursor is not shown. */
   away: boolean;
+  /** Holds the board's host key (issue #12). */
+  host: boolean;
 }
 
 /** Peer fields a client may change about itself. */
@@ -93,7 +96,8 @@ export type CursorBroadcast = ["C", entries: CursorEntry[]];
 export const CURSOR_TICK_MS = 16;
 
 export type ClientMessage =
-  | { t: "hello"; clientId: string; name: string; color: string; lastSeq: number }
+  /** `hostKey`, if this browser created the board (or opened a host link), makes it the host. */
+  | { t: "hello"; clientId: string; name: string; color: string; lastSeq: number; hostKey?: string }
   | { t: "ping"; at: number }
   /** `cid` is the client's id for this op, echoed back in ack/reject. */
   | { t: "op"; cid: string; op: Op }
@@ -113,7 +117,7 @@ export type Sync =
   | { type: "replay"; ops: CommittedOp[] };
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; peers: Peer[]; createdAt: number; keptUntil: number; sync: Sync }
+  | { t: "welcome"; self: string; you: Peer; peers: Peer[]; createdAt: number; keptUntil: number; sync: Sync }
   | { t: "join"; peer: Peer }
   /** A peer's presence, profile or lock changed (sent to everyone, including that peer). */
   | { t: "peer"; peer: Peer }
@@ -194,7 +198,8 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
     case "hello": {
       const profile = parseProfile(m.name, m.color);
       if (!profile || !isShortString(m.clientId, 64) || !Number.isSafeInteger(m.lastSeq)) return null;
-      return { t: "hello", clientId: m.clientId, ...profile, lastSeq: m.lastSeq as number };
+      const hostKey = typeof m.hostKey === "string" && m.hostKey.length <= 64 ? m.hostKey : undefined;
+      return { t: "hello", clientId: m.clientId, ...profile, lastSeq: m.lastSeq as number, hostKey };
     }
     case "ping":
       return Number.isFinite(m.at) ? { t: "ping", at: m.at as number } : null;

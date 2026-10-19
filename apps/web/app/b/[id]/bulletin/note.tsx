@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   COLORS,
   LIMITS,
@@ -12,8 +12,10 @@ import {
   type Peer,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import { EditingBadge } from "../kanban/card";
 import { COLOR_STYLES } from "../kanban/colors";
+import { Markdown } from "../kanban/markdown";
 import { clampToCanvas } from "./placement";
 
 /** Sticky-note paper colors; text stays dark so notes read the same in both themes. */
@@ -32,34 +34,20 @@ const SAVE_DEBOUNCE_MS = 300;
 /** Arrow keys nudge a focused note by this many canvas pixels (Shift: 5×). */
 const NUDGE = 20;
 
-/** Plain text with http(s) links made clickable. Never renders HTML. */
-function Linkified({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <a key={i} href={part} target="_blank" rel="noopener nofollow noreferrer" className="text-blue-700 underline" onPointerDown={(e) => e.stopPropagation()}>
-            {part}
-          </a>
-        ) : (
-          <Fragment key={i}>{part}</Fragment>
-        ),
-      )}
-    </>
-  );
-}
-
-/** Presentational note, shared by the canvas and the remote drag ghost. */
+/**
+ * Presentational note, shared by the canvas and the remote drag ghost. Text is
+ * Markdown, rendered by the same safe renderer as card descriptions (bare
+ * URLs become links via GFM autolinks).
+ */
 export function NoteFace({ note, lifted = false, className = "" }: { note: Note; lifted?: boolean; className?: string }) {
   return (
     <div
-      className={`h-full w-full overflow-hidden whitespace-pre-wrap break-words rounded-sm border p-3 text-sm text-stone-900 shadow ${PAPER[note.color]} ${
+      className={`h-full w-full overflow-hidden break-words rounded-sm border p-3 text-sm text-stone-900 shadow ${PAPER[note.color]} ${
         lifted ? "rotate-2 shadow-xl" : ""
       } ${className}`}
       style={lifted ? { width: note.w, height: note.h } : undefined}
     >
-      {note.text ? <Linkified text={note.text} /> : <span className="text-stone-400">Empty note</span>}
+      {note.text ? <Markdown text={note.text} /> : <span className="text-stone-400">Empty note</span>}
     </div>
   );
 }
@@ -75,10 +63,12 @@ interface CanvasNoteProps {
   /** Open the text editor as soon as the note mounts (for brand-new notes). */
   startEditing?: boolean;
   onEditingDone?: () => void;
+  /** False when the host has made the bulletin view-only: no drag, resize, edit or menu. */
+  canEdit?: boolean;
   onDelete: (note: Note) => void;
 }
 
-export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, heldBy, editors = [], startEditing = false, onEditingDone, onDelete }: CanvasNoteProps) {
+export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, heldBy, editors = [], startEditing = false, onEditingDone, onDelete, canEdit = true }: CanvasNoteProps) {
   const dispatch = useBoard((s) => s.dispatch);
   const lockCard = useBoard((s) => s.lockCard);
   const unlockCard = useBoard((s) => s.unlockCard);
@@ -90,7 +80,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
   /** Live size while resizing. */
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
-  const [editing, setEditing] = useState(startEditing);
+  const [editing, setEditing] = useState(startEditing && canEdit);
   const [draft, setDraft] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -153,10 +143,10 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         height: dims.h,
         zIndex: drag ? 100_000 : note.z,
         boxShadow: editor ? `0 0 0 3px ${editor.color}` : undefined,
-        cursor: editing ? "auto" : drag ? "grabbing" : "grab",
+        cursor: editing || !canEdit ? "auto" : drag ? "grabbing" : "grab",
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0 || editing || (e.target as HTMLElement).closest("button, a, textarea, details, [data-resize]")) return;
+        if (!canEdit || e.button !== 0 || editing || (e.target as HTMLElement).closest("button, a, textarea, details, [data-resize]")) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         dragStart.current = { px: e.clientX, py: e.clientY, x: note.x, y: note.y, moved: false };
       }}
@@ -185,9 +175,9 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         dragStart.current = null;
         setDrag(null);
       }}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={() => canEdit && setEditing(true)}
       onKeyDown={(e) => {
-        if (editing || e.target !== e.currentTarget) return;
+        if (!canEdit || editing || e.target !== e.currentTarget) return;
         const step = e.shiftKey ? NUDGE * 5 : NUDGE;
         const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
         if (delta) {
@@ -225,31 +215,33 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         </span>
       )}
       {editor && <EditingBadge peers={editors} />}
-      {!editing && (
+      {canEdit && !editing && (
         <NoteMenu note={note} pinned={pinned} columns={columns} lastCardPosition={lastCardPosition} onEdit={() => setEditing(true)} onDelete={() => onDelete(note)} />
       )}
-      <div
-        data-resize
-        aria-hidden
-        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize opacity-0 group-hover:opacity-100"
-        style={{ background: "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.25) 50%)" }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          resizeStart.current = { px: e.clientX, py: e.clientY, w: note.w, h: note.h };
-        }}
-        onPointerMove={(e) => {
-          const s = resizeStart.current;
-          if (!s) return;
-          const clampSize = (v: number) => Math.round(Math.min(Math.max(v, NOTE_SIZE.min), NOTE_SIZE.max));
-          setSize({ w: clampSize(s.w + (e.clientX - s.px) / zoom), h: clampSize(s.h + (e.clientY - s.py) / zoom) });
-        }}
-        onPointerUp={() => {
-          resizeStart.current = null;
-          if (size && (size.w !== note.w || size.h !== note.h)) dispatch({ kind: "note.update", id: note.id, patch: size });
-          setSize(null);
-        }}
-      />
+      {canEdit && (
+        <div
+          data-resize
+          aria-hidden
+          className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize opacity-0 group-hover:opacity-100"
+          style={{ background: "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.25) 50%)" }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            resizeStart.current = { px: e.clientX, py: e.clientY, w: note.w, h: note.h };
+          }}
+          onPointerMove={(e) => {
+            const s = resizeStart.current;
+            if (!s) return;
+            const clampSize = (v: number) => Math.round(Math.min(Math.max(v, NOTE_SIZE.min), NOTE_SIZE.max));
+            setSize({ w: clampSize(s.w + (e.clientX - s.px) / zoom), h: clampSize(s.h + (e.clientY - s.py) / zoom) });
+          }}
+          onPointerUp={() => {
+            resizeStart.current = null;
+            if (size && (size.w !== note.w || size.h !== note.h)) dispatch({ kind: "note.update", id: note.id, patch: size });
+            setSize(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -270,18 +262,24 @@ function NoteMenu({
   onDelete: () => void;
 }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const menu = useDismiss();
   const item = "w-full rounded px-2 py-1 text-left hover:bg-stone-100 dark:hover:bg-stone-800";
+  // Actions close the menu; recoloring keeps it open so colors can be compared.
+  const act = (fn: () => void) => () => {
+    closeMenu(menu);
+    fn();
+  };
 
   return (
-    <details className="absolute right-1 top-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 open:opacity-100">
+    <details ref={menu} className="absolute right-1 top-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 open:opacity-100">
       <summary className="cursor-pointer list-none rounded px-1.5 text-stone-600 hover:bg-black/10" aria-label="Note options">
         ⋯
       </summary>
       <div className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-stone-200 bg-white p-1.5 text-sm text-stone-900 shadow-lg dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100">
-        <button type="button" className={item} onClick={onEdit}>
+        <button type="button" className={item} onClick={act(onEdit)}>
           Edit text
         </button>
-        <button type="button" className={item} onClick={() => dispatch({ kind: "board.pin", noteId: pinned ? null : note.id })}>
+        <button type="button" className={item} onClick={act(() => dispatch({ kind: "board.pin", noteId: pinned ? null : note.id }))}>
           {pinned ? "Unpin announcement" : "Pin as announcement"}
         </button>
         <div className="flex flex-wrap gap-1.5 px-2 py-1.5" role="group" aria-label="Note color">
@@ -304,22 +302,22 @@ function NoteMenu({
                 key={col.id}
                 type="button"
                 className={item}
-                onClick={() =>
+                onClick={act(() =>
                   dispatch({
                     kind: "note.toCard",
                     id: note.id,
                     cardId: newItemId(),
                     columnId: col.id,
                     position: positionBetween(lastCardPosition(col.id), null),
-                  })
-                }
+                  }),
+                )}
               >
                 → {col.title}
               </button>
             ))}
           </div>
         )}
-        <button type="button" className={`${item} mt-1 border-t border-stone-200 text-red-600 dark:border-stone-700 dark:text-red-400`} onClick={onDelete}>
+        <button type="button" className={`${item} mt-1 border-t border-stone-200 text-red-600 dark:border-stone-700 dark:text-red-400`} onClick={act(onDelete)}>
           Delete note
         </button>
       </div>

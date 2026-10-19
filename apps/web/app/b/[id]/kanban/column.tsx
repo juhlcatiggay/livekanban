@@ -5,7 +5,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { LIMITS, positionBetween, type Card, type Column, type Peer } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import type { PresenceIndex } from "@/lib/presence-index";
+import type { Can } from "@/lib/use-can";
 import { InlineEdit } from "./inline-edit";
 import { EditingBadge, SortableCard } from "./card";
 
@@ -15,14 +17,17 @@ interface ColumnProps {
   column: Column;
   cards: Card[];
   presence: PresenceIndex;
+  /** What this tab may change (the host can make parts view-only). */
+  can: Can;
   onOpenCard: (id: string) => void;
   onDelete: (column: Column) => void;
 }
 
-export function SortableColumn({ column, cards, presence, onOpenCard, onDelete }: ColumnProps) {
+export function SortableColumn({ column, cards, presence, can, onOpenCard, onDelete }: ColumnProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: columnDragId(column.id),
     data: { type: "column" },
+    disabled: !can.moveCards,
   });
 
   return (
@@ -39,19 +44,22 @@ export function SortableColumn({ column, cards, presence, onOpenCard, onDelete }
         column={column}
         count={cards.length}
         editors={presence.editors[column.id] ?? []}
+        canEdit={can.editCards}
         onDelete={() => onDelete(column)}
         handle={
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-roledescription="column"
-            aria-label={`Move column ${column.title}. Press Space to pick up.`}
-            className="cursor-grab touch-none rounded px-1 text-stone-400 hover:bg-stone-200 active:cursor-grabbing dark:hover:bg-stone-800"
-          >
-            ⠿
-          </button>
+          can.moveCards && (
+            <button
+              type="button"
+              ref={setActivatorNodeRef}
+              {...attributes}
+              {...listeners}
+              aria-roledescription="column"
+              aria-label={`Move column ${column.title}. Press Space to pick up.`}
+              className="cursor-grab touch-none rounded px-1 text-stone-400 hover:bg-stone-200 active:cursor-grabbing dark:hover:bg-stone-800"
+            >
+              ⠿
+            </button>
+          )
         }
       />
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
@@ -63,11 +71,12 @@ export function SortableColumn({ column, cards, presence, onOpenCard, onDelete }
               onOpen={() => onOpenCard(card.id)}
               heldBy={presence.heldBy[card.id]}
               editors={presence.editors[card.id]}
+              canMove={can.moveCards}
             />
           ))}
         </ul>
       </SortableContext>
-      <AddCard columnId={column.id} lastPosition={cards.at(-1)?.position ?? null} />
+      {can.editCards && <AddCard columnId={column.id} lastPosition={cards.at(-1)?.position ?? null} />}
     </section>
   );
 }
@@ -87,12 +96,14 @@ function ColumnHeader({
   column,
   count,
   editors,
+  canEdit,
   onDelete,
   handle,
 }: {
   column: Column;
   count: number;
   editors: Peer[];
+  canEdit: boolean;
   onDelete: () => void;
   handle: React.ReactNode;
 }) {
@@ -113,6 +124,7 @@ function ColumnHeader({
         className="flex-1 text-sm font-semibold"
         onCommit={(title) => dispatch({ kind: "column.update", id: column.id, patch: { title } })}
         onEditingChange={(editing) => setPresence({ editing: editing ? column.id : null })}
+        disabled={!canEdit}
       />
       <span
         className={`rounded px-1.5 text-xs tabular-nums ${over ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300" : "text-stone-500"}`}
@@ -122,13 +134,14 @@ function ColumnHeader({
         {column.wipLimit !== null && ` / ${column.wipLimit}`}
       </span>
       {/* Keyed so a WIP limit changed by someone else resets the draft. */}
-      <ColumnMenu key={String(column.wipLimit)} column={column} onDelete={onDelete} />
+      {canEdit && <ColumnMenu key={String(column.wipLimit)} column={column} onDelete={onDelete} />}
     </header>
   );
 }
 
 function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const menu = useDismiss();
   const [wip, setWip] = useState(column.wipLimit?.toString() ?? "");
 
   const saveWip = () => {
@@ -141,7 +154,7 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
   };
 
   return (
-    <details className="relative">
+    <details ref={menu} className="relative">
       <summary
         className="cursor-pointer list-none rounded px-1.5 text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800"
         aria-label={`Column ${column.title} options`}
@@ -159,13 +172,20 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
             value={wip}
             onChange={(e) => setWip(e.target.value)}
             onBlur={saveWip}
-            onKeyDown={(e) => e.key === "Enter" && saveWip()}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              saveWip();
+              closeMenu(menu);
+            }}
             className="w-16 rounded border border-stone-300 bg-transparent px-1 py-0.5 dark:border-stone-700"
           />
         </label>
         <button
           type="button"
-          onClick={onDelete}
+          onClick={() => {
+            closeMenu(menu);
+            onDelete();
+          }}
           className="mt-1 w-full rounded px-1 py-1 text-left text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
         >
           Delete column

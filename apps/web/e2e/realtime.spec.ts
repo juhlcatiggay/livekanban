@@ -143,14 +143,15 @@ test("changing your name and color updates everyone's presence bar", async ({ br
   await createBoard(ada);
   const bob = await visitor(browser, "Bob");
   await open(bob, ada.url());
-  await expect(bob.getByTitle("Ada", { exact: true })).toBeVisible();
+  // Ada created the board, so her avatar also says she's the host.
+  await expect(bob.getByTitle("Ada, host", { exact: true })).toBeVisible();
 
   await ada.getByLabel("Your name and color").click();
   await ada.getByRole("textbox", { name: "Your name" }).fill("Ada Lovelace");
   await ada.getByRole("textbox", { name: "Your name" }).press("Enter");
   await ada.getByRole("button", { name: "Color #e11d48" }).click();
 
-  const avatar = bob.getByTitle("Ada Lovelace", { exact: true });
+  const avatar = bob.getByTitle("Ada Lovelace, host", { exact: true });
   await expect(avatar).toBeVisible();
   await expect(avatar).toHaveCSS("background-color", "rgb(225, 29, 72)");
 });

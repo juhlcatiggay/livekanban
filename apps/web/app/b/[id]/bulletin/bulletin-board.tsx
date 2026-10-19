@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { CANVAS, LIMITS, NOTE_SIZE, cardsByColumn, sortedColumns, type BoardData, type Note } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { indexPresence } from "@/lib/presence-index";
+import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
+import { Minimap } from "./minimap";
 import { CanvasNote } from "./note";
 import { clampToCanvas, freeNoteSpot } from "./placement";
 
@@ -21,12 +23,14 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   const peers = useBoard((s) => s.peers);
   const offerUndo = useUndo((s) => s.offer);
   const presence = useMemo(() => indexPresence(peers), [peers]);
+  const canEdit = useCan().editBulletin;
   const notes = useMemo(() => Object.values(board.notes).sort((a, b) => a.z - b.z), [board.notes]);
   const columns = useMemo(() => sortedColumns(board), [board]);
   const cardsIn = useMemo(() => cardsByColumn(board), [board]);
   const [zoom, setZoom] = useState<number>(1);
   const [justCreated, setJustCreated] = useState<string | null>(null);
-  const scroller = useRef<HTMLDivElement>(null);
+  // State rather than a ref so the minimap re-subscribes once the element exists.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const full = notes.length >= LIMITS.notes;
 
   const createNote = (x: number, y: number) => {
@@ -39,7 +43,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
 
   /** New notes go near the middle of what this viewer can currently see. */
   const addNoteInView = () => {
-    const el = scroller.current;
+    const el = scroller;
     if (!el) return;
     const cx = (el.scrollLeft + el.clientWidth / 2) / zoom - NOTE_SIZE.defaultW / 2;
     const cy = (el.scrollTop + el.clientHeight / 2) / zoom - NOTE_SIZE.defaultH / 2;
@@ -55,15 +59,21 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-2 text-sm dark:border-stone-800">
-        <button
-          type="button"
-          onClick={addNoteInView}
-          disabled={full}
-          className="rounded-md bg-amber-400 px-3 py-1 font-medium text-stone-900 hover:bg-amber-300 disabled:opacity-50"
-        >
-          + Add note
-        </button>
-        <span className="text-xs text-stone-500">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+        {canEdit ? (
+          <>
+            <button
+              type="button"
+              onClick={addNoteInView}
+              disabled={full}
+              className="rounded-md bg-amber-400 px-3 py-1 font-medium text-stone-900 hover:bg-amber-300 disabled:opacity-50"
+            >
+              + Add note
+            </button>
+            <span className="text-xs text-stone-500">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+          </>
+        ) : (
+          <span className="text-xs text-stone-500">The host has made the bulletin board view-only.</span>
+        )}
         <div className="ml-auto flex items-center gap-1" role="group" aria-label="Zoom">
           {ZOOMS.map((z) => (
             <button
@@ -78,40 +88,44 @@ export function BulletinBoard({ board }: { board: BoardData }) {
           ))}
         </div>
       </div>
-      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto bg-stone-100 dark:bg-stone-900" data-presence-area>
-        <div className="relative" style={{ width: CANVAS.width * zoom, height: CANVAS.height * zoom }}>
-          <div
-            data-anchor="canvas"
-            aria-label="Bulletin canvas"
-            className="absolute left-0 top-0 origin-top-left bg-white dark:bg-stone-950"
-            style={{
-              width: CANVAS.width,
-              height: CANVAS.height,
-              transform: `scale(${zoom})`,
-              backgroundImage: "radial-gradient(circle, rgba(120,113,108,0.25) 1px, transparent 1px)",
-              backgroundSize: "24px 24px",
-            }}
-            onDoubleClick={(e) => {
-              if (e.target !== e.currentTarget) return;
-              const r = e.currentTarget.getBoundingClientRect();
-              createNote((e.clientX - r.left) / zoom - NOTE_SIZE.defaultW / 2, (e.clientY - r.top) / zoom - 20);
-            }}
-          >
-            {notes.map((note) => (
-              <CanvasNote
-                key={note.id}
-                note={note}
-                zoom={zoom}
-                columns={columns}
-                lastCardPosition={(columnId) => cardsIn[columnId]?.at(-1)?.position ?? null}
-                pinned={board.pinnedNoteId === note.id}
-                heldBy={presence.heldBy[note.id]}
-                editors={presence.editors[note.id]}
-                startEditing={note.id === justCreated}
-                onEditingDone={() => setJustCreated(null)}
-                onDelete={deleteNote}
-              />
-            ))}
+      <div className="relative flex min-h-0 flex-1">
+        <Minimap notes={notes} scroller={scroller} zoom={zoom} />
+        <div ref={setScroller} className="relative min-h-0 flex-1 overflow-auto bg-stone-100 dark:bg-stone-900" data-presence-area>
+          <div className="relative" style={{ width: CANVAS.width * zoom, height: CANVAS.height * zoom }}>
+            <div
+              data-anchor="canvas"
+              aria-label="Bulletin canvas"
+              className="absolute left-0 top-0 origin-top-left bg-white dark:bg-stone-950"
+              style={{
+                width: CANVAS.width,
+                height: CANVAS.height,
+                transform: `scale(${zoom})`,
+                backgroundImage: "radial-gradient(circle, rgba(120,113,108,0.25) 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
+              }}
+              onDoubleClick={(e) => {
+                if (!canEdit || e.target !== e.currentTarget) return;
+                const r = e.currentTarget.getBoundingClientRect();
+                createNote((e.clientX - r.left) / zoom - NOTE_SIZE.defaultW / 2, (e.clientY - r.top) / zoom - 20);
+              }}
+            >
+              {notes.map((note) => (
+                <CanvasNote
+                  key={note.id}
+                  note={note}
+                  zoom={zoom}
+                  columns={columns}
+                  lastCardPosition={(columnId) => cardsIn[columnId]?.at(-1)?.position ?? null}
+                  pinned={board.pinnedNoteId === note.id}
+                  heldBy={presence.heldBy[note.id]}
+                  editors={presence.editors[note.id]}
+                  startEditing={note.id === justCreated}
+                  onEditingDone={() => setJustCreated(null)}
+                  onDelete={deleteNote}
+                  canEdit={canEdit}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store";
+import { claimHostFromUrl, getHostKey } from "@/lib/host";
 import { getIdentity } from "@/lib/identity";
+import { useCan } from "@/lib/use-can";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
 import { BoardActions } from "./board-actions";
 import { InlineEdit } from "./kanban/inline-edit";
 import { BulletinBoard } from "./bulletin/bulletin-board";
+import { CalendarView } from "./calendar/calendar-view";
 import { PinnedBanner } from "./bulletin/pinned-banner";
 import { KanbanBoard } from "./kanban/kanban-board";
 import { CursorLayer } from "./presence/cursor-layer";
+import { HostMenu, ViewOnlyNotice } from "./presence/host-menu";
 import { PresenceBar } from "./presence/presence-bar";
 import { UndoToast } from "./undo-toast";
 import { setView, useView, type View } from "./view";
@@ -21,8 +25,12 @@ export function Board({ boardId }: { boardId: string }) {
   const board = useBoard((s) => s.board);
   const dispatch = useBoard((s) => s.dispatch);
   const view = useView();
+  const can = useCan();
 
-  useEffect(() => connectBoard(boardId, getIdentity()), [boardId]);
+  useEffect(() => {
+    const hostKey = claimHostFromUrl(boardId) ?? getHostKey(boardId);
+    return connectBoard(boardId, getIdentity(), hostKey);
+  }, [boardId]);
   useCursorSender();
   useActivity();
   useUndoShortcuts();
@@ -46,11 +54,13 @@ export function Board({ boardId }: { boardId: string }) {
               label="board title"
               className="text-base font-medium"
               onCommit={(title) => dispatch({ kind: "board.update", title })}
+              disabled={!can.renameBoard}
             />
           )}
         </div>
         <div className="flex items-center gap-4">
           {board && <BoardActions board={board} />}
+          <HostMenu boardId={boardId} />
           <PresenceBar />
           <CopyLinkButton />
         </div>
@@ -61,6 +71,8 @@ export function Board({ boardId }: { boardId: string }) {
           <p className="m-auto text-stone-500">Loading board…</p>
         ) : view === "bulletin" ? (
           <BulletinBoard board={board} />
+        ) : view === "calendar" ? (
+          <CalendarView board={board} />
         ) : (
           <>
             <PinnedBanner board={board} />
@@ -137,6 +149,8 @@ function Tabs({ view, noteCount }: { view: View; noteCount: number }) {
     <nav role="tablist" aria-label="Board views" className="flex gap-1 border-b border-stone-200 px-3 dark:border-stone-800">
       {tab("kanban", "Kanban")}
       {tab("bulletin", noteCount ? `Bulletin (${noteCount})` : "Bulletin")}
+      {tab("calendar", "Calendar")}
+      <ViewOnlyNotice />
     </nav>
   );
 }

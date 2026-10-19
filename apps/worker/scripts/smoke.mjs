@@ -50,7 +50,7 @@ function connect(boardId) {
   return { ws, opened, closed, next, until, send: (m) => ws.send(JSON.stringify(m)) };
 }
 
-const hello = (name, lastSeq = 0) => ({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq });
+const hello = (name, lastSeq = 0, hostKey) => ({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq, hostKey });
 
 async function newBoard() {
   const res = await fetch(`${base}/api/boards`, { method: "POST" });
@@ -58,10 +58,10 @@ async function newBoard() {
 }
 
 /** Connects, says hello and resolves once `welcome` arrives. */
-async function join(boardId, name, lastSeq = 0) {
+async function join(boardId, name, lastSeq = 0, hostKey) {
   const c = connect(boardId);
   await c.opened;
-  c.send(hello(name, lastSeq));
+  c.send(hello(name, lastSeq, hostKey));
   const welcome = await c.next();
   assert.equal(welcome.t, "welcome");
   return Object.assign(c, { welcome });
@@ -460,6 +460,59 @@ const tests = {
     }
     a.ws.close();
     b.ws.close();
+  },
+
+  async "the creator is host and can make parts of the board view-only for others"() {
+    const res = await fetch(`${base}/api/boards`, { method: "POST" });
+    const { id, hostKey } = await res.json();
+    assert.match(hostKey, /^[A-Za-z0-9_-]{32}$/);
+
+    const host = await join(id, "Hana", 0, hostKey);
+    const guest = await join(id, "Gus");
+    const impostor = await join(id, "Ivy", 0, "x".repeat(32));
+    await host.next(); // join(guest)
+    await host.next(); // join(impostor)
+    await guest.next(); // join(impostor)
+    assert.equal(host.welcome.you.host, true);
+    assert.equal(guest.welcome.you.host, false);
+    assert.equal(impostor.welcome.you.host, false, "a wrong key doesn't make you host");
+    assert.equal(guest.welcome.peers.find((p) => p.name === "Hana").host, true, "others see who the host is");
+    assert.equal(host.welcome.sync.board.hasHost, true);
+    assert.deepEqual(host.welcome.sync.board.permissions, { renameBoard: true, editBulletin: true, editCards: true, moveCards: true });
+
+    const col = firstColumnId(host.welcome);
+    await op(host, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "Plan" });
+    await guest.next(); // opb
+    await impostor.next(); // opb
+
+    const lockdown = { renameBoard: true, editBulletin: false, editCards: false, moveCards: false };
+    const denied = await op(guest, { kind: "board.permissions", permissions: lockdown });
+    assert.equal(denied.reason, "Only the host can change permissions");
+    assert.equal((await op(host, { kind: "board.permissions", permissions: lockdown })).t, "ack");
+    assert.deepEqual((await guest.next()).op.op.permissions, lockdown);
+    await impostor.next(); // opb
+
+    const viewOnly = "The host has made this view-only";
+    for (const blocked of [
+      { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Sneaky" },
+      { kind: "card.update", id: "card00001", patch: { title: "Changed" } },
+      { kind: "card.move", id: "card00001", columnId: col, position: "a5" },
+      { kind: "column.create", id: "col0000009", title: "Extra", position: "a9" },
+      { kind: "note.create", id: "note00001", x: 0, y: 0, w: 200, h: 200, color: "amber", text: "" },
+    ]) {
+      assert.equal((await op(guest, blocked)).reason, viewOnly, blocked.kind);
+    }
+    guest.send({ t: "lock", cardId: "card00001" });
+    assert.equal((await guest.next()).t, "lockDenied", "can't even pick the card up");
+    assert.equal((await op(guest, { kind: "board.update", title: "Renamed by guest" })).t, "ack", "renaming is still allowed");
+
+    // The host isn't restricted, and the settings persist.
+    assert.equal((await host.next()).op.op.title, "Renamed by guest");
+    assert.equal((await op(host, { kind: "card.update", id: "card00001", patch: { title: "Host edit" } })).t, "ack");
+    for (const c of [host, guest, impostor]) c.ws.close();
+    const later = await join(id, "Late");
+    assert.deepEqual(later.welcome.sync.board.permissions, lockdown);
+    later.ws.close();
   },
 
   async "create endpoint enforces allowed origins"() {
