@@ -132,7 +132,7 @@ Raw `clientX/Y` pixels are wrong on any other screen: columns reflow, people scr
 
 Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to the room and back 30–60 ms on one continent (the object is created near its first visitor), batching ≤ 16 ms (8 ms on average), interpolation buffer 33–40 ms. Show measured round-trip time in a debug overlay from day one.
 
-**Measured on staging (Oct 2026), from the Philippines (Cloudflare edge MNL):** raw room round trip p50 89 ms / p95 104–116 ms; cursor latency p50 80–92 ms / p95 105–109 ms, i.e. the app adds almost nothing on top of the network. The miss against 100 ms is distance: the nearest Durable Object locations are further from Manila than the 30–60 ms this budget assumes. Re-check from a data-center runner (`.github/workflows/load.yml`) for the in-region number.
+**Measured on staging (Oct 2026), from the Philippines (Cloudflare edge MNL):** raw room round trip p50 89 ms / p95 104–116 ms; cursor latency p50 80–92 ms / p95 105–109 ms, i.e. the app adds almost nothing on top of the network. The miss against 100 ms is distance: the nearest Durable Object locations are further from Manila than the 30–60 ms this budget assumes. Re-check from a data-center runner (the load-test workflow, kept in the private repository) for the in-region number.
 
 **Cross-region boards.** Each board has one room for its whole life, created near whoever created the board, and every viewer connects to it, so a cursor travels A → room → B and costs about half of each person's round trip to the room. Rough figures (typical internet round trips, not measured): a PH-created board is ~95–110 ms between PH and Australia and ~130–150 ms between PH and the US West Coast; a US-created board is ~20–50 ms within the US, ~130–150 ms to PH, and ~160–180 ms between two PH users, whose cursors cross the Pacific twice. Across continents no design gets under 100 ms (Manila–US West is ~60–80 ms each way in fiber alone), so the 100 ms target applies to people near the same room. Moving rooms toward their users or relaying cursors regionally is out of scope for v1; card edits at these latencies still feel instant, and the footer shows each person's measured round trip.
 
@@ -265,7 +265,7 @@ Each phase ends with a demoable gate; phases 2 and 3 overlap by a week because p
 **Deployment**
 
 - Next.js on Vercel with a preview per pull request; the Worker via `wrangler deploy` from CI.
-- Separate staging and production Worker environments, each with its own Durable Object namespace; `NEXT_PUBLIC_PARTY_HOST` points the client at the right one. Defined in `wrangler.jsonc` as `--env staging` (`livekanban-staging`, `EXPIRY=2m`) and `--env production`; `.github/workflows/deploy.yml` deploys staging after CI passes on main and production on demand, then runs the latency check against staging.
+- Separate staging and production Worker environments, each with its own Durable Object namespace; `NEXT_PUBLIC_PARTY_HOST` points the client at the right one. Defined in `wrangler.jsonc` as `--env staging` (`livekanban-staging`, `EXPIRY=2m`) and `--env production`; A deploy workflow in the private repository deploys staging after CI passes on main and production on demand, then runs the latency check against staging. This public portfolio repository has no deploy or load-test workflows and no secrets.
 - `ALLOWED_ORIGINS` accepts `*` for one hostname label, so `https://livekanban-*.vercel.app` covers every Vercel preview without allowing look-alike domains.
 
 **Costs**
