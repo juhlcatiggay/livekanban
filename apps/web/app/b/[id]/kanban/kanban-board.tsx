@@ -25,15 +25,13 @@ import {
   positionBetween,
   sortedColumns,
   type BoardData,
-  type Card,
   type Column,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { indexPresence } from "@/lib/presence-index";
 import { useUndo } from "@/lib/undo";
-import { freeNoteSpot } from "../bulletin/placement";
 import { CardFace } from "./card";
-import { CardDialog } from "./card-dialog";
+import { CardDialogFor } from "./card-dialog-for";
 import { ColumnPreview, SortableColumn, columnDragId } from "./column";
 
 const isColumnDragId = (id: UniqueIdentifier) => String(id).startsWith("col:");
@@ -185,18 +183,6 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     });
   };
 
-  const deleteCard = (card: Card) => {
-    setOpenCardId(null);
-    dispatch({ kind: "card.delete", id: card.id });
-    offerUndo(`Card “${card.title}” deleted`, { kind: "card.restore", id: card.id, card });
-  };
-
-  const moveCardToBulletin = (card: Card) => {
-    setOpenCardId(null);
-    const { x, y } = freeNoteSpot(board);
-    dispatch({ kind: "card.toNote", id: card.id, noteId: newItemId(), x, y });
-  };
-
   const onDragStart = ({ active }: DragStartEvent) => {
     setActiveId(active.id);
     if (isColumnDragId(active.id)) {
@@ -264,7 +250,6 @@ export function KanbanBoard({ board }: { board: BoardData }) {
   const shownColumns = columnOrder ? columnOrder.map((id) => board.columns[id]).filter(Boolean) : columns;
   const activeCard = activeId && !isColumnDragId(activeId) ? board.cards[String(activeId)] : undefined;
   const activeColumn = activeId && isColumnDragId(activeId) ? board.columns[columnIdOf(activeId)] : undefined;
-  const openCard = openCardId ? board.cards[openCardId] : undefined;
 
   return (
     <>
@@ -303,16 +288,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
         </DragOverlay>
       </DndContext>
 
-      {openCard && (
-        <CardDialog
-          key={openCard.id}
-          card={openCard}
-          columnTitle={board.columns[openCard.columnId]?.title ?? ""}
-          onClose={() => setOpenCardId(null)}
-          onDelete={deleteCard}
-          onMoveToBulletin={moveCardToBulletin}
-        />
-      )}
+      {openCardId && <CardDialogFor board={board} cardId={openCardId} onClose={() => setOpenCardId(null)} />}
     </>
   );
 }

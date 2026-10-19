@@ -113,3 +113,49 @@ test("#7 the bulletin minimap shows notes and moves the view", async ({ page }) 
   await page.getByRole("button", { name: "Show map" }).click();
   await expect(page.getByRole("button", { name: /^Bulletin minimap/ })).toBeVisible();
 });
+
+test("#8 the calendar shows cards by due date and drag reschedules them", async ({ browser }) => {
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const now = new Date();
+  const due = iso(now);
+  // Another day that's always in the visible month: the 1st, or the 2nd if today is the 1st.
+  const target = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() === 1 ? 2 : 1));
+
+  const ada = await (await browser.newContext()).newPage();
+  await createBoard(ada);
+  const todo = ada.getByRole("region", { name: "Column To do" });
+  await todo.getByRole("button", { name: "+ Add card" }).click();
+  await todo.getByLabel("New card title").fill("Launch");
+  await todo.getByLabel("New card title").press("Enter");
+  await todo.getByLabel("New card title").press("Escape");
+  await ada.getByRole("button", { name: /^Launch\. Press Enter/ }).click();
+  await ada.getByRole("dialog").getByLabel("Due date").fill(due);
+  await ada.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+
+  await ada.getByRole("tab", { name: "Calendar" }).click();
+  const chip = ada.getByRole("button", { name: /^Launch \(To do\)/ });
+  await expect(ada.locator(`section[data-day="${due}"]`).getByRole("button", { name: /^Launch/ })).toBeVisible();
+  await expect(ada.locator(`section[data-day="${due}"] [aria-current="date"]`)).toBeVisible();
+
+  // Someone else sees the move live in their kanban.
+  const bob = await (await browser.newContext()).newPage();
+  await bob.goto(ada.url().replace(/#.*$/, ""));
+  await expect(bob.getByRole("button", { name: /^Launch\. Press Enter/ })).toBeVisible();
+
+  await chip.dragTo(ada.locator(`section[data-day="${target}"]`));
+  await expect(ada.locator(`section[data-day="${target}"]`).getByRole("button", { name: /^Launch/ })).toBeVisible();
+  const [y, m, d] = target.split("-").map(Number);
+  const dueLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(Date.UTC(y, m - 1, d));
+  await expect(bob.getByRole("button", { name: /^Launch\. Press Enter/ })).toContainText(`Due ${dueLabel}`);
+
+  // Cards open from the calendar, and months can be browsed.
+  await ada.locator(`section[data-day="${target}"]`).getByRole("button", { name: /^Launch/ }).click();
+  await expect(ada.getByRole("dialog").getByLabel("Card title")).toHaveValue("Launch");
+  await ada.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  const heading = ada.getByRole("heading", { level: 2 });
+  const thisMonth = await heading.textContent();
+  await ada.getByRole("button", { name: "Next month" }).click();
+  await expect(heading).not.toHaveText(thisMonth!);
+  await ada.getByRole("button", { name: "Today" }).click();
+  await expect(heading).toHaveText(thisMonth!);
+});

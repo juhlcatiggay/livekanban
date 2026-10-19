@@ -9,6 +9,7 @@ import { CreateBoardButton } from "../../create-board-button";
 import { BoardActions } from "./board-actions";
 import { InlineEdit } from "./kanban/inline-edit";
 import { BulletinBoard } from "./bulletin/bulletin-board";
+import { CalendarView } from "./calendar/calendar-view";
 import { PinnedBanner } from "./bulletin/pinned-banner";
 import { KanbanBoard } from "./kanban/kanban-board";
 import { CursorLayer } from "./presence/cursor-layer";
@@ -61,6 +62,8 @@ export function Board({ boardId }: { boardId: string }) {
           <p className="m-auto text-stone-500">Loading board…</p>
         ) : view === "bulletin" ? (
           <BulletinBoard board={board} />
+        ) : view === "calendar" ? (
+          <CalendarView board={board} />
         ) : (
           <>
             <PinnedBanner board={board} />
@@ -137,6 +140,7 @@ function Tabs({ view, noteCount }: { view: View; noteCount: number }) {
     <nav role="tablist" aria-label="Board views" className="flex gap-1 border-b border-stone-200 px-3 dark:border-stone-800">
       {tab("kanban", "Kanban")}
       {tab("bulletin", noteCount ? `Bulletin (${noteCount})` : "Bulletin")}
+      {tab("calendar", "Calendar")}
     </nav>
   );
 }
