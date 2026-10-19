@@ -1,11 +1,13 @@
 import { Server, type Connection } from "partyserver";
 import { nanoid } from "nanoid";
 import {
+  CURSOR_TICK_MS,
   CloseCode,
   MAX_CONNECTIONS,
   MAX_MESSAGE_LENGTH,
   encode,
   parseClientMessage,
+  type CursorEntry,
   type Op,
   type OpKind,
   type Peer,
@@ -60,6 +62,32 @@ export class BoardRoom extends Server<Env> {
   private readonly lastMove = new Map<string, number>();
   /** Rate-limit buckets; in memory, so they reset after hibernation (when nobody is sending). */
   private readonly buckets = new Map<string, Bucket>();
+  /** Latest cursor per connection since the last flush (latest wins). */
+  private readonly cursorBatch = new Map<string, CursorEntry>();
+  private cursorFlush: ReturnType<typeof setTimeout> | null = null;
+  private lastCursorFlush = 0;
+
+  /**
+   * Leading-edge throttle: a cursor goes out immediately if nothing was sent in
+   * the last tick, so quiet rooms add no delay; under load, cursors arriving
+   * within a tick share the next flush.
+   */
+  private scheduleCursorFlush() {
+    if (this.cursorFlush) return;
+    const wait = this.lastCursorFlush + CURSOR_TICK_MS - Date.now();
+    if (wait <= 0) this.flushCursors();
+    else this.cursorFlush = setTimeout(() => this.flushCursors(), wait);
+  }
+
+  /** Sends everyone one message with every cursor that moved since the last flush. */
+  private flushCursors() {
+    this.cursorFlush = null;
+    this.lastCursorFlush = Date.now();
+    if (!this.cursorBatch.size) return;
+    const msg = JSON.stringify(["C", [...this.cursorBatch.values()]]);
+    this.cursorBatch.clear();
+    this.broadcast(msg);
+  }
 
   /** A board exists only if the create endpoint initialized it; visiting a URL never creates one. */
   private isInitialized(): boolean {
@@ -249,14 +277,15 @@ export class BoardRoom extends Server<Env> {
     const msg = parseClientMessage(raw);
     if (!msg) return;
 
-    // Cursor: the most frequent message. Broadcast and forget, never stored in SQLite.
+    // Cursor: the most frequent message. Batched per tick and forgotten, never stored in SQLite.
     if (Array.isArray(msg)) {
       if (!conn.state || !this.allow(conn, "presence")) return;
       const [, anchor, fx, fy] = msg;
       this.lastMove.set(conn.id, Date.now());
-      // Rounded to keep relayed messages around 40 bytes.
+      // Rounded to keep each entry small.
       const round = (n: number) => Math.round(n * 1e4) / 1e4;
-      this.broadcast(JSON.stringify(["c", conn.id, anchor, round(fx), round(fy)]), [conn.id]);
+      this.cursorBatch.set(conn.id, [conn.id, anchor, round(fx), round(fy)]);
+      this.scheduleCursorFlush();
       return;
     }
 
@@ -364,6 +393,7 @@ export class BoardRoom extends Server<Env> {
   onClose(conn: Connection<Peer>) {
     this.lastMove.delete(conn.id);
     this.buckets.delete(conn.id);
+    this.cursorBatch.delete(conn.id);
     // Leaving also releases the peer's lock, since locks live in peer state.
     if (conn.state) this.broadcast(encode({ t: "leave", connectionId: conn.id }), [conn.id]);
   }

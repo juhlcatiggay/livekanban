@@ -35,7 +35,14 @@ function connect(boardId) {
           waiters.push(r);
           setTimeout(() => j(new Error("timed out waiting for message")), 5000);
         });
-  return { ws, opened, closed, next, send: (m) => ws.send(JSON.stringify(m)) };
+  /** Next message matching `pred`, skipping others. */
+  const until = async (pred) => {
+    for (;;) {
+      const msg = await next();
+      if (pred(msg)) return msg;
+    }
+  };
+  return { ws, opened, closed, next, until, send: (m) => ws.send(JSON.stringify(m)) };
 }
 
 const hello = (name, lastSeq = 0) => ({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq });
@@ -272,19 +279,36 @@ const tests = {
     for (const c of [a, hidden]) c.ws.close();
   },
 
-  async "cursors are relayed to others with the sender's id, never echoed"() {
+  async "cursors are batched per tick with the sender's id, latest position wins"() {
     const id = await newBoard();
     const a = await join(id, "Teal Otter");
     const b = await join(id, "Amber Fox");
     await a.next(); // join(b)
+    const me = a.welcome.self;
     a.ws.send(JSON.stringify(["c", "board", 0.123456, 0.5]));
     a.ws.send(JSON.stringify(["c", "bad anchor!", 0.1, 0.1])); // dropped
     a.ws.send(JSON.stringify(["c", "board", 5, 0.1])); // out of range, dropped
+    assert.deepEqual(await b.next(), ["C", [[me, "board", 0.1235, 0.5]]]);
+    assert.deepEqual(await a.next(), ["C", [[me, "board", 0.1235, 0.5]]], "the sender gets the batch too and skips itself");
+
+    // A burst of moves is coalesced: fewer entries arrive than were sent, and the last one wins.
+    for (let i = 1; i <= 20; i++) a.ws.send(JSON.stringify(["c", "board", i / 100, 0.5]));
     a.ws.send(JSON.stringify(["c", null, 0, 0]));
-    assert.deepEqual(await b.next(), ["c", a.welcome.self, "board", 0.1235, 0.5]);
-    assert.deepEqual(await b.next(), ["c", a.welcome.self, null, 0, 0]);
-    a.send({ t: "ping", at: 7 });
-    assert.deepEqual(await a.next(), { t: "pong", at: 7 }); // no cursor echo before the pong
+    const mine = [];
+    while (mine.at(-1)?.[1] !== null) {
+      const batch = await b.until((m) => Array.isArray(m));
+      assert.equal(new Set(batch[1].map((e) => e[0])).size, batch[1].length, "one entry per person per batch");
+      mine.push(...batch[1].filter((e) => e[0] === me));
+    }
+    assert.ok(mine.length < 21, `expected coalescing, got ${mine.length} entries for 21 moves`);
+
+    // People moving at the same time share batches.
+    for (let i = 1; i <= 20; i++) {
+      a.ws.send(JSON.stringify(["c", "board", i / 100, 0.3]));
+      b.ws.send(JSON.stringify(["c", "board", i / 100, 0.7]));
+    }
+    const both = await a.until((m) => Array.isArray(m) && m[1].length === 2);
+    assert.deepEqual(both[1].map((e) => e[0]).sort(), [me, b.welcome.self].sort());
     a.ws.close();
     b.ws.close();
   },

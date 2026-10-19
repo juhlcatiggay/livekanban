@@ -250,8 +250,10 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
   socket.addEventListener("message", (event: MessageEvent<string>) => {
     const msg = JSON.parse(event.data) as ServerMessage;
     if (Array.isArray(msg)) {
-      const [, connectionId, anchor, fx, fy] = msg;
-      pushCursor(connectionId, anchor, fx, fy);
+      const self = useBoard.getState().self;
+      for (const [connectionId, anchor, fx, fy] of msg[1]) {
+        if (connectionId !== self) pushCursor(connectionId, anchor, fx, fy);
+      }
       return;
     }
     switch (msg.t) {
