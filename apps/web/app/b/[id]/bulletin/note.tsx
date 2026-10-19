@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   COLORS,
   LIMITS,
@@ -15,6 +15,7 @@ import { newItemId, useBoard } from "@/lib/board-store";
 import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import { EditingBadge } from "../kanban/card";
 import { COLOR_STYLES } from "../kanban/colors";
+import { Markdown } from "../kanban/markdown";
 import { clampToCanvas } from "./placement";
 
 /** Sticky-note paper colors; text stays dark so notes read the same in both themes. */
@@ -33,34 +34,20 @@ const SAVE_DEBOUNCE_MS = 300;
 /** Arrow keys nudge a focused note by this many canvas pixels (Shift: 5×). */
 const NUDGE = 20;
 
-/** Plain text with http(s) links made clickable. Never renders HTML. */
-function Linkified({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <a key={i} href={part} target="_blank" rel="noopener nofollow noreferrer" className="text-blue-700 underline" onPointerDown={(e) => e.stopPropagation()}>
-            {part}
-          </a>
-        ) : (
-          <Fragment key={i}>{part}</Fragment>
-        ),
-      )}
-    </>
-  );
-}
-
-/** Presentational note, shared by the canvas and the remote drag ghost. */
+/**
+ * Presentational note, shared by the canvas and the remote drag ghost. Text is
+ * Markdown, rendered by the same safe renderer as card descriptions (bare
+ * URLs become links via GFM autolinks).
+ */
 export function NoteFace({ note, lifted = false, className = "" }: { note: Note; lifted?: boolean; className?: string }) {
   return (
     <div
-      className={`h-full w-full overflow-hidden whitespace-pre-wrap break-words rounded-sm border p-3 text-sm text-stone-900 shadow ${PAPER[note.color]} ${
+      className={`h-full w-full overflow-hidden break-words rounded-sm border p-3 text-sm text-stone-900 shadow ${PAPER[note.color]} ${
         lifted ? "rotate-2 shadow-xl" : ""
       } ${className}`}
       style={lifted ? { width: note.w, height: note.h } : undefined}
     >
-      {note.text ? <Linkified text={note.text} /> : <span className="text-stone-400">Empty note</span>}
+      {note.text ? <Markdown text={note.text} /> : <span className="text-stone-400">Empty note</span>}
     </div>
   );
 }
