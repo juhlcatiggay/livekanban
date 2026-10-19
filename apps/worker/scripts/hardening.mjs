@@ -221,25 +221,29 @@ const tests = {
 };
 
 const separate = {
-  async "with a Turnstile secret set, creating a board needs a token"() {
-    const w = await startWorker({ TURNSTILE_SECRET: "test-secret" });
+  async "with a Turnstile secret set, creating a board needs a token (or the admin token)"() {
+    const w = await startWorker({ TURNSTILE_SECRET: "test-secret", ADMIN_TOKEN: "test-admin" });
     try {
       const { res, json } = await newBoard(w.http);
       assert.equal(res.status, 403);
       assert.match(json.error, /verification failed/i);
+      const admin = await fetch(`${w.http}/api/boards`, { method: "POST", headers: { Authorization: "Bearer test-admin" } });
+      assert.equal(admin.status, 201, "operator scripts skip Turnstile");
     } finally {
       await w.worker.stop();
     }
   },
 
   async "each network can create a limited number of boards per hour"() {
-    const w = await startWorker({ CREATE_LIMIT_PER_HOUR: "3" });
+    const w = await startWorker({ CREATE_LIMIT_PER_HOUR: "3", ADMIN_TOKEN: "test-admin" });
     try {
       for (let i = 0; i < 3; i++) assert.equal((await newBoard(w.http)).res.status, 201);
       const { res, json } = await newBoard(w.http);
       assert.equal(res.status, 429);
       assert.match(json.error, /too many new boards/i);
       assert.ok(Number(res.headers.get("Retry-After")) > 3000);
+      const admin = await fetch(`${w.http}/api/boards`, { method: "POST", headers: { Authorization: "Bearer test-admin" } });
+      assert.equal(admin.status, 201, "operator scripts skip the per-IP limit");
     } finally {
       await w.worker.stop();
     }

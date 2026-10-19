@@ -75,6 +75,8 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   await expect(saved).toContainText("Due 30 Nov");
 
   await saved.click();
+  await expect(page.getByRole("dialog").getByRole("region", { name: "Description preview" }).getByRole("heading", { name: "Scope" })).toBeVisible();
+  await page.getByRole("dialog").getByRole("tab", { name: "write" }).click();
   await expect(page.getByRole("dialog").getByLabel("Description")).toHaveValue("## Scope\nEverything in phase 2");
 });
 

@@ -113,13 +113,17 @@ Raw `clientX/Y` pixels are wrong on any other screen: columns reflow, people scr
 **Cursor pipeline**
 
 1. Sender samples `pointermove`, coalesces to one update per animation frame, and sends at most 30 per second, only when the position changed.
-2. Messages are tiny arrays, e.g. `["c", anchor, fx, fy]`, about 40 bytes; the room stamps the sender's connection ID and broadcasts to everyone else.
+2. Messages are tiny arrays, e.g. `["c", anchor, fx, fy]`, about 40 bytes. The room keeps the latest position per person and sends everyone a single batch (immediately if nothing went out in the last 16 ms, otherwise at the end of that tick) `["C", [[connectionId, anchor, fx, fy], …]]` (clients skip their own entry). Relaying each cursor to each viewer grows with the square of the room size: 50 people at 30/s would be ~73,500 outgoing messages/s, and the local load test collapsed to 10% delivery at that rate. Batched, it's ~1,500/s with 99% of positions delivered and p95 39 ms locally; a superseded position within one tick is simply skipped.
 3. Receivers buffer about 2 frames and interpolate (spline or lerp) between samples, so 30 Hz input renders smoothly at 60–120 Hz. Tune the buffer: smaller = more current, larger = smoother.
 4. Cursors are drawn in one absolutely positioned overlay layer with CSS `transform` only (no React re-render per move), updated from a `requestAnimationFrame` loop.
 5. Off-screen cursors: if the converted point falls outside the viewport, clamp it to the edge and render a directional arrow with the name.
 6. Idle: stop sending after 10 s without movement; hide a cursor whose owner's tab is hidden (`visibilitychange`).
 
-Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to the room and back 30–60 ms on one continent (the object is created near its first visitor), interpolation buffer 33 ms. Show measured round-trip time in a debug overlay from day one.
+Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to the room and back 30–60 ms on one continent (the object is created near its first visitor), batching ≤ 16 ms (8 ms on average), interpolation buffer 33–40 ms. Show measured round-trip time in a debug overlay from day one.
+
+**Measured on staging (Oct 2026), from the Philippines (Cloudflare edge MNL):** raw room round trip p50 89 ms / p95 104–116 ms; cursor latency p50 80–92 ms / p95 105–109 ms, i.e. the app adds almost nothing on top of the network. The miss against 100 ms is distance: the nearest Durable Object locations are further from Manila than the 30–60 ms this budget assumes. Re-check from a data-center runner (`.github/workflows/load.yml`) for the in-region number.
+
+**Cross-region boards.** Each board has one room for its whole life, created near whoever created the board, and every viewer connects to it, so a cursor travels A → room → B and costs about half of each person's round trip to the room. Rough figures (typical internet round trips, not measured): a PH-created board is ~95–110 ms between PH and Australia and ~130–150 ms between PH and the US West Coast; a US-created board is ~20–50 ms within the US, ~130–150 ms to PH, and ~160–180 ms between two PH users, whose cursors cross the Pacific twice. Across continents no design gets under 100 ms (Manila–US West is ~60–80 ms each way in fiber alone), so the 100 ms target applies to people near the same room. Moving rooms toward their users or relaying cursors regionally is out of scope for v1; card edits at these latencies still feel instant, and the footer shows each person's measured round trip.
 
 **Drags**
 
@@ -141,7 +145,8 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 | --- | --- | --- | --- | --- |
 | `hello` | client → room | presence | client ID, name, color, last seq | on connect |
 | `welcome` | room → client | both | presence list + `sync`: full snapshot, or a replay of missed ops when the log still covers `lastSeq` | on connect / resync |
-| `cursor` | both | presence | bare array `["c", anchor, fx, fy]`; the room prefixes the sender's connection ID. The held card comes from the peer's `holding`, not the cursor | ≤ 30/s per person |
+| `cursor` | client → room | presence | bare array `["c", anchor, fx, fy]`. The held card comes from the peer's `holding`, not the cursor | ≤ 30/s per person |
+| `cursors` | room → all | presence | `["C", [[connectionId, anchor, fx, fy], …]]`: latest position of everyone who moved this tick | ≤ 60/s per viewer |
 | `presence` | client → room | presence | `editing` target ID or null, `idle`, `away` | on change |
 | `profile` | client → room | presence | name, color | on change |
 | `peer` | room → all | presence | the updated peer (editing, holding, idle, away, name, color), also sent to that peer | on change |
@@ -188,7 +193,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 - Turnstile challenge on "Create board" and a per-IP creation limit (20 boards/hour) in the Worker. The limit uses a small `CreationLimiter` Durable Object per IP, because Workers' built-in rate limiter only supports 10 s or 60 s windows.
 - Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 12,000-character max message (a 4 KB cap could not carry a 10,000-character description); exceeding them drops messages, repeated abuse closes the socket.
 - The per-board size and connection caps from the Data model section.
-- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links).
+- Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links). Implemented with react-markdown: raw HTML is skipped, unsafe URL schemes are stripped, links get `rel="noopener nofollow noreferrer ugc"`, and images render as their alt text so cards can't load trackers.
 - Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep a daily backup of the board for 7 days (downloadable from the trash and importable as a new board). Converting a note to a card (or back) replaces the source outright, so the trash never offers a duplicate.
 - A "Report board" link and an admin script to delete a board by ID, since anonymous public boards will eventually host content you must take down.
 
@@ -231,12 +236,13 @@ Each phase ends with a demoable gate; phases 2 and 3 overlap by a week because p
 - Playwright with 2–3 browser contexts per test: one drags, the others assert the ghost, the lock and the final position.
 - Latency harness: a headless client stamps cursor messages and measures round trip; track p50/p95 per region and fail staging checks if p95 exceeds 100 ms in-region.
 - Room tests in Wrangler local dev: op ordering, lock contention, reconnect replay, and the expiry alarm with a 2-minute window.
-- Load: 50 simulated clients on one board at 30 cursor messages/s each, and 1,000 boards with 2 clients each.
+- Load: 50 simulated clients on one board at 30 cursor messages/s each, and 1,000 boards with 2 clients each (`pnpm --filter worker load`). Locally one board with 50 clients passes (99% delivered, p95 39 ms); many boards locally top out around 2,000 incoming messages/s because every room shares one workerd process on one machine, so that scenario is only meaningful against staging, where rooms spread across Cloudflare's machines.
 
 **Deployment**
 
 - Next.js on Vercel with a preview per pull request; the Worker via `wrangler deploy` from CI.
-- Separate staging and production Worker environments, each with its own Durable Object namespace; `NEXT_PUBLIC_PARTY_HOST` points the client at the right one.
+- Separate staging and production Worker environments, each with its own Durable Object namespace; `NEXT_PUBLIC_PARTY_HOST` points the client at the right one. Defined in `wrangler.jsonc` as `--env staging` (`livekanban-staging`, `EXPIRY=2m`) and `--env production`; `.github/workflows/deploy.yml` deploys staging after CI passes on main and production on demand, then runs the latency check against staging.
+- `ALLOWED_ORIGINS` accepts `*` for one hostname label, so `https://livekanban-*.vercel.app` covers every Vercel preview without allowing look-alike domains.
 
 **Costs**
 

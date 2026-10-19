@@ -1,8 +1,10 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+  // Top level = local development (`pnpm dev`). Deploy with `--env staging` or `--env production`.
   "name": "livekanban",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
   "durable_objects": {
     "bindings": [
       { "name": "BoardRoom", "class_name": "BoardRoom" },
@@ -17,12 +19,53 @@
   "dev": { "port": 8787 },
   "vars": {
     // Comma-separated origins allowed to create boards and open sockets.
+    // `*` matches one hostname label, e.g. https://livekanban-*.vercel.app for Vercel previews.
     "ALLOWED_ORIGINS": "http://localhost:3000",
-    // Durations: 60d, 7d, 2m, 30s... Staging shortens EXPIRY to 2m to test the whole expiry flow.
+    // Durations: 60d, 7d, 2m, 30s...
     "EXPIRY": "60d",
     "TRASH_RETENTION": "7d",
     "BACKUP_EVERY": "1d",
     "CREATE_LIMIT_PER_HOUR": "20"
+  },
+  // Secrets (wrangler secret put --env <env> / .dev.vars locally): TURNSTILE_SECRET, ADMIN_TOKEN. Both optional.
+
+  // Each environment is a separate Worker with its own Durable Object namespaces, so staging
+  // boards never touch production. Bindings and vars aren't inherited, so they're repeated.
+  "env": {
+    "staging": {
+      "name": "livekanban-staging",
+      "durable_objects": {
+        "bindings": [
+          { "name": "BoardRoom", "class_name": "BoardRoom" },
+          { "name": "CreationLimiter", "class_name": "CreationLimiter" }
+        ]
+      },
+      "vars": {
+        // TODO(launch): add the staging web origin(s) once the Vercel project exists.
+        "ALLOWED_ORIGINS": "http://localhost:3000,https://livekanban-*.vercel.app",
+        // Short window so the whole expiry flow can be watched end to end (see "Expiry" in CLAUDE.md).
+        "EXPIRY": "2m",
+        "TRASH_RETENTION": "7d",
+        "BACKUP_EVERY": "1d",
+        "CREATE_LIMIT_PER_HOUR": "100"
+      }
+    },
+    "production": {
+      "name": "livekanban",
+      "durable_objects": {
+        "bindings": [
+          { "name": "BoardRoom", "class_name": "BoardRoom" },
+          { "name": "CreationLimiter", "class_name": "CreationLimiter" }
+        ]
+      },
+      "vars": {
+        // TODO(launch): replace with the production domain, e.g. https://livekanban.app
+        "ALLOWED_ORIGINS": "https://livekanban.vercel.app",
+        "EXPIRY": "60d",
+        "TRASH_RETENTION": "7d",
+        "BACKUP_EVERY": "1d",
+        "CREATE_LIMIT_PER_HOUR": "20"
+      }
+    }
   }
-  // Secrets (wrangler secret put / .dev.vars): TURNSTILE_SECRET, ADMIN_TOKEN. Both optional.
 }

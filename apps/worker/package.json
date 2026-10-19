@@ -11,7 +11,8 @@
     "test": "node scripts/smoke.mjs",
     "latency": "node scripts/latency.mjs",
     "test:hardening": "node scripts/hardening.mjs",
-    "admin:delete": "node scripts/admin-delete.mjs"
+    "admin:delete": "node scripts/admin-delete.mjs",
+    "load": "node scripts/load.mjs"
   },
   "dependencies": {
     "@livekanban/protocol": "workspace:*",

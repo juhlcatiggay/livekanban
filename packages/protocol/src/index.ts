@@ -78,8 +78,19 @@ export type PresencePatch = Partial<Pick<Peer, "editing" | "idle" | "away">>;
  * Sent as a bare array to keep the most frequent message tiny.
  */
 export type CursorMessage = ["c", anchor: string | null, fx: number, fy: number];
-/** As relayed by the room, stamped with the sender's connection id. */
-export type CursorBroadcast = ["c", connectionId: string, anchor: string | null, fx: number, fy: number];
+export type CursorEntry = [connectionId: string, anchor: string | null, fx: number, fy: number];
+/**
+ * The room batches cursors: at most once per CURSOR_TICK_MS it sends everyone
+ * one message with the latest position of each person who moved (immediately
+ * if nothing was sent in the last tick). Relaying every cursor to every viewer
+ * grows with the square of the room size (50 people at 30/s is ~73,500
+ * messages/s); batching keeps it to one message per viewer per tick. The batch
+ * includes your own cursor; clients skip it.
+ */
+export type CursorBroadcast = ["C", entries: CursorEntry[]];
+
+/** Minimum gap between cursor flushes (~60 Hz); under load adds at most this much latency, when quiet none. */
+export const CURSOR_TICK_MS = 16;
 
 export type ClientMessage =
   | { t: "hello"; clientId: string; name: string; color: string; lastSeq: number }
