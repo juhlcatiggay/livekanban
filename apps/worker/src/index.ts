@@ -44,7 +44,7 @@ export default {
 
     if (url.pathname === "/api/boards" && request.method === "POST") {
       if (originRejected(request, env)) return new Response("Forbidden", { status: 403 });
-      // TODO(phase 6): Turnstile check and per-IP creation limit.
+      // TODO(phase 5): Turnstile check and per-IP creation limit.
       const id = await createBoard(env);
       return Response.json({ id }, { status: 201, headers: cors });
     }

@@ -5,16 +5,11 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { LIMITS, positionBetween, type Card, type Column, type Peer } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
+import type { PresenceIndex } from "@/lib/presence-index";
 import { InlineEdit } from "./inline-edit";
 import { EditingBadge, SortableCard } from "./card";
 
 export const columnDragId = (id: string) => `col:${id}`;
-
-/** Other people's presence, keyed by the card or column id it concerns. */
-export interface PresenceIndex {
-  heldBy: Record<string, Peer>;
-  editors: Record<string, Peer[]>;
-}
 
 interface ColumnProps {
   column: Column;

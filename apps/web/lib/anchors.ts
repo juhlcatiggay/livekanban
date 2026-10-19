@@ -9,6 +9,13 @@
  */
 
 export const BOARD_ANCHOR = "board";
+/** The bulletin canvas. Measured by its scaled box, so fractions are canvas coordinates at any zoom. */
+export const CANVAS_ANCHOR = "canvas";
+
+/** The scrollable area on screen (kanban board or bulletin canvas viewport). */
+export function presenceArea(): HTMLElement | null {
+  return document.querySelector<HTMLElement>("[data-presence-area]");
+}
 
 export interface AnchorPoint {
   anchor: string;
@@ -50,13 +57,14 @@ export function toViewport(anchor: string, fx: number, fy: number): { x: number;
 /** Scrolls so that an anchor point is centred in view. */
 export function revealAnchor(anchor: string, fx: number, fy: number) {
   const el = anchorElement(anchor);
+  const area = presenceArea();
   if (!el) return;
-  if (anchor === BOARD_ANCHOR) {
-    el.scrollTo({
-      left: fx * el.scrollWidth - el.clientWidth / 2,
-      top: fy * el.scrollHeight - el.clientHeight / 2,
-      behavior: "smooth",
-    });
+  // Board and canvas points: scroll the visible area so the point is centred.
+  if ((anchor === BOARD_ANCHOR || anchor === CANVAS_ANCHOR) && area) {
+    const p = toViewport(anchor, fx, fy);
+    if (!p) return;
+    const r = area.getBoundingClientRect();
+    area.scrollBy({ left: p.x - (r.left + r.width / 2), top: p.y - (r.top + r.height / 2), behavior: "smooth" });
     return;
   }
   el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });

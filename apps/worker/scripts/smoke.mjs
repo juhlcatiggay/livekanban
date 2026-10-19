@@ -342,6 +342,95 @@ const tests = {
     b.ws.close();
   },
 
+  async "notes stack, move to the top, pin, and survive a reconnect"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const note = (nid, x, y) => ({ kind: "note.create", id: nid, x, y, w: 220, h: 180, color: "amber", text: "Hello" });
+    const first = await op(a, note("note00001", 100, 100));
+    const second = await op(a, note("note00002", 150, 150));
+    assert.deepEqual([first.op.op.z, second.op.op.z], [1, 2]);
+
+    const moved = await op(a, { kind: "note.move", id: "note00001", x: 400, y: 300 });
+    assert.equal(moved.op.op.z, 3, "moving brings a note to the top");
+    await op(a, { kind: "note.update", id: "note00001", patch: { text: "Standup at 10", color: "blue", w: 300 } });
+    await op(a, { kind: "board.pin", noteId: "note00001" });
+
+    const bad = [
+      { kind: "note.move", id: "note00001", x: -5, y: 0 },
+      { kind: "note.update", id: "note00001", patch: { w: 50 } },
+      { kind: "note.create", id: "note00003", x: 0, y: 0, w: 220, h: 180, color: "neon", text: "" },
+    ];
+    for (const b of bad) assert.equal((await op(a, b)).reason, "Invalid change");
+    assert.match((await op(a, { kind: "board.pin", noteId: "nosuchnote" })).reason, /note not found/i);
+
+    a.ws.close();
+    const b = await join(id, "Amber Fox");
+    const { notes, pinnedNoteId } = b.welcome.sync.board;
+    assert.equal(pinnedNoteId, "note00001");
+    assert.deepEqual(
+      { x: notes.note00001.x, y: notes.note00001.y, z: notes.note00001.z, w: notes.note00001.w },
+      { x: 400, y: 300, z: 3, w: 300 },
+    );
+    assert.equal(notes.note00001.text, "Standup at 10");
+    assert.equal(notes.note00001.color, "blue");
+    b.ws.close();
+  },
+
+  async "a note becomes a card and a card becomes a note"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const col = firstColumnId(a.welcome);
+    await op(a, { kind: "note.create", id: "note00001", x: 0, y: 0, w: 220, h: 180, color: "green", text: "\n  Ship v1  \nwith docs" });
+    const toCard = await op(a, { kind: "note.toCard", id: "note00001", cardId: "card00001", columnId: col, position: "a0" });
+    assert.equal(toCard.t, "ack");
+
+    await op(a, { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Retro" });
+    await op(a, { kind: "card.update", id: "card00002", patch: { description: "What went well" } });
+    const toNote = await op(a, { kind: "card.toNote", id: "card00002", noteId: "note00002", x: 40, y: 40 });
+    assert.equal(toNote.t, "ack");
+    assert.equal(toNote.op.op.z, 1);
+
+    const b = await join(id, "Amber Fox");
+    await a.next(); // join(b)
+    const board = b.welcome.sync.board;
+    assert.equal(board.notes.note00001, undefined);
+    assert.deepEqual(
+      { title: board.cards.card00001.title, description: board.cards.card00001.description, color: board.cards.card00001.color },
+      { title: "Ship v1", description: "Ship v1  \nwith docs", color: "green" },
+    );
+    assert.equal(board.cards.card00002, undefined);
+    assert.equal(board.notes.note00002.text, "Retro\n\nWhat went well");
+
+    // Deleted notes come back with their data.
+    await op(a, { kind: "note.delete", id: "note00002" });
+    const restored = await op(a, { kind: "note.restore", id: "note00002" });
+    assert.equal(restored.op.op.note.text, "Retro\n\nWhat went well");
+    a.ws.close();
+    b.ws.close();
+  },
+
+  async "a held note can't be moved or converted by someone else"() {
+    const id = await newBoard();
+    const a = await join(id, "Teal Otter");
+    const b = await join(id, "Amber Fox");
+    await a.next(); // join(b)
+    await op(a, { kind: "note.create", id: "note00001", x: 0, y: 0, w: 220, h: 180, color: "amber", text: "Mine" });
+    await b.next(); // opb
+    a.send({ t: "lock", cardId: "note00001" });
+    await a.next();
+    await b.next();
+    const col = firstColumnId(b.welcome);
+    for (const blocked of [
+      { kind: "note.move", id: "note00001", x: 50, y: 50 },
+      { kind: "note.toCard", id: "note00001", cardId: "card00001", columnId: col, position: "a0" },
+      { kind: "note.delete", id: "note00001" },
+    ]) {
+      assert.match((await op(b, blocked)).reason, /Teal Otter is moving/);
+    }
+    a.ws.close();
+    b.ws.close();
+  },
+
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);

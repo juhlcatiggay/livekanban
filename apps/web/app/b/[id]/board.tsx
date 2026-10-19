@@ -7,14 +7,19 @@ import { getIdentity } from "@/lib/identity";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
 import { InlineEdit } from "./kanban/inline-edit";
+import { BulletinBoard } from "./bulletin/bulletin-board";
+import { PinnedBanner } from "./bulletin/pinned-banner";
 import { KanbanBoard } from "./kanban/kanban-board";
 import { CursorLayer } from "./presence/cursor-layer";
 import { PresenceBar } from "./presence/presence-bar";
+import { UndoToast } from "./undo-toast";
+import { setView, useView, type View } from "./view";
 
 export function Board({ boardId }: { boardId: string }) {
   const status = useBoard((s) => s.status);
   const board = useBoard((s) => s.board);
   const dispatch = useBoard((s) => s.dispatch);
+  const view = useView();
 
   useEffect(() => connectBoard(boardId, getIdentity()), [boardId]);
   useCursorSender();
@@ -47,16 +52,49 @@ export function Board({ boardId }: { boardId: string }) {
           <CopyLinkButton />
         </div>
       </header>
+      <Tabs view={view} noteCount={board ? Object.keys(board.notes).length : 0} />
       <main className="flex min-h-0 flex-1 flex-col">
-        {board ? <KanbanBoard board={board} /> : <p className="m-auto text-stone-500">Loading board…</p>}
+        {!board ? (
+          <p className="m-auto text-stone-500">Loading board…</p>
+        ) : view === "bulletin" ? (
+          <BulletinBoard board={board} />
+        ) : (
+          <>
+            <PinnedBanner board={board} />
+            <KanbanBoard board={board} />
+          </>
+        )}
       </main>
       <CursorLayer />
+      <UndoToast />
       <ErrorToast />
       <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
         <KeptUntil />
         <ConnectionInfo status={status} />
       </footer>
     </div>
+  );
+}
+
+function Tabs({ view, noteCount }: { view: View; noteCount: number }) {
+  const tab = (v: View, label: string) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={view === v}
+      onClick={() => setView(v)}
+      className={`border-b-2 px-3 py-2 text-sm ${
+        view === v ? "border-teal-600 font-semibold" : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <nav role="tablist" aria-label="Board views" className="flex gap-1 border-b border-stone-200 px-3 dark:border-stone-800">
+      {tab("kanban", "Kanban")}
+      {tab("bulletin", noteCount ? `Bulletin (${noteCount})` : "Bulletin")}
+    </nav>
   );
 }
 
