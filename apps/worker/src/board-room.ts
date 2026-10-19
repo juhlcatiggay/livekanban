@@ -141,7 +141,9 @@ export class BoardRoom extends Server<Env> {
     await this.ctx.storage.deleteAll();
   }
 
+  /** Sends to one connection; a socket that has already closed (e.g. a hello after we closed it) is skipped. */
   private send(conn: Connection, msg: ServerMessage) {
+    if (conn.readyState !== WebSocket.OPEN) return;
     conn.send(encode(msg));
   }
 
@@ -388,7 +390,8 @@ export class BoardRoom extends Server<Env> {
         // A socket opened just before the board was deleted can still say hello afterwards.
         if (!this.isInitialized()) {
           this.send(conn, { t: "expired" });
-          return conn.close(CloseCode.Expired, "Board expired");
+          if (conn.readyState === WebSocket.OPEN) conn.close(CloseCode.Expired, "Board expired");
+          return;
         }
         const record = this.store.passwordRecord();
         // The host never needs the password; everyone else does when one is set.
@@ -496,11 +499,17 @@ export class BoardRoom extends Server<Env> {
 
       case "profile": {
         if (!conn.state) return;
+        const previous = conn.state.name;
         const renamed = this.store.renameMember(conn.state.clientId, msg.name, msg.color);
         if (!renamed.ok) return this.send(conn, { t: "profileRejected", reason: renamed.reason });
         // Every tab of this browser on the board shows the new name.
         for (const other of this.getConnections<ConnState>()) {
           if (other.state?.clientId === conn.state.clientId) this.updatePeer(other, { name: msg.name, color: msg.color });
+        }
+        // Then cards that name this person (as assignee or last editor), and the history, follow it.
+        if (previous !== msg.name) {
+          const result = this.store.commit({ kind: "member.rename", from: previous, to: msg.name }, msg.name, Date.now());
+          if (result.ok) this.broadcast(encode({ t: "opb", op: result.committed }));
         }
         return;
       }

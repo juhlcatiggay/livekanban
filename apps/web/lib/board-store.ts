@@ -7,6 +7,7 @@ import {
   applyOp,
   encode,
   opTarget,
+  sameName,
   parseOp,
   type BackupInfo,
   type BoardData,
@@ -199,7 +200,12 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
   /** Open history views show new changes as they're committed. */
   const addToHistory = (c: CommittedOp) => {
     const { history, itemHistory } = useBoard.getState();
-    const prepend = (view: HistoryView) => (view.entries.some((e) => e.seq === c.seq) ? view : { ...view, entries: [c, ...view.entries] });
+    // After a rename, loaded history shows that person by their new name, as the room's log does.
+    const { op } = c;
+    const rename = (view: HistoryView): HistoryView =>
+      op.kind === "member.rename" ? { ...view, entries: view.entries.map((e) => (sameName(e.by, op.from) ? { ...e, by: op.to } : e)) } : view;
+    const prepend = (view: HistoryView) => (view.entries.some((e) => e.seq === c.seq) ? view : { ...rename(view), entries: [c, ...rename(view).entries] });
+    if (itemHistory && op.kind === "member.rename") set({ itemHistory: rename(itemHistory) });
     if (history) set({ history: prepend(history) });
     if (itemHistory && opTarget(c.op) === itemHistory.id) set({ itemHistory: prepend(itemHistory) });
   };

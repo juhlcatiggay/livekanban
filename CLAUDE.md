@@ -209,6 +209,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 **Identity**
 
 - Display name + color + a random client ID in localStorage; a fresh connection ID per tab. Names are self-chosen and not verified, so the UI never implies they are.
+- Renaming yourself updates your name everywhere on the board: after the `peer` update, the room commits a `member.rename` op (from, to) that rewrites assignees (case-insensitive, deduplicated) and "last edited by" on cards and notes, and the history's author names. Only the room creates it; clients sending it get "Invalid change". Not undoable.
 
 **Abuse and limits**
 

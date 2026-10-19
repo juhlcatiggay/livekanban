@@ -8,6 +8,7 @@ import {
   LIMITS,
   applyChecklistOp,
   cardToNoteText,
+  renameAssignee,
   labelKey,
   noteToCardFields,
   positionBetween,
@@ -930,6 +931,20 @@ export class BoardStorage {
           actor,
           op.id,
         );
+        return op;
+      }
+
+      case "member.rename": {
+        // Renames are rare and a board has at most 2,000 cards, so check every card with assignees
+        // (a text search on the JSON would miss names with quotes or backslashes in them).
+        for (const row of this.sql.exec<{ id: string; assignees: string }>("SELECT id, assignees FROM cards WHERE assignees != '[]'").toArray()) {
+          const renamed = renameAssignee(JSON.parse(row.assignees) as string[], op.from, op.to);
+          if (renamed) this.sql.exec("UPDATE cards SET assignees = ? WHERE id = ?", JSON.stringify(renamed), row.id);
+        }
+        this.sql.exec("UPDATE cards SET updated_by = ? WHERE lower(updated_by) = lower(?)", op.to, op.from);
+        this.sql.exec("UPDATE notes SET updated_by = ? WHERE lower(updated_by) = lower(?)", op.to, op.from);
+        // History shows people by their current name too.
+        this.sql.exec("UPDATE ops_log SET actor_name = ? WHERE lower(actor_name) = lower(?)", op.to, op.from);
         return op;
       }
 

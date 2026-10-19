@@ -88,6 +88,8 @@ export function invert(board: BoardData, op: Op): Op | null {
     }
     case "label.color":
       return { kind: "label.color", label: op.label, color: board.labelColors[labelKey(op.label)] ?? null };
+    case "member.rename":
+      return null;
 
     case "note.toCard":
     case "card.toNote":
