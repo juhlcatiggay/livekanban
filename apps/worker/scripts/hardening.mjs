@@ -177,7 +177,8 @@ const tests = {
         cards: {
           card00001: {
             id: "card00001", number: 7, columnId: "col0000001", position: "a0", title: "Keep", description: "See #3",
-            color: "blue", labels: ["ux"], assignee: "Ada", dueDate: "2026-12-01", updatedAt: 0, updatedBy: "x",
+            color: "blue", labels: ["ux"], assignee: "Ada", startDate: "2026-11-15", dueDate: "2026-12-01", updatedAt: 0, updatedBy: "x",
+            checklist: [{ id: "item00001", text: "Draft", done: true }, { id: "item00002", text: "Review", done: false }, { id: "!", text: "bad" }],
           },
           card00002: { id: "card00002", columnId: "nosuchcolumn", position: "a0", title: "Orphan" },
           bad: { id: "!", title: "<script>" },
@@ -186,6 +187,7 @@ const tests = {
           note00001: { id: "note00001", number: 3, x: 99999, y: 10, w: 5, h: 200, z: 1, color: "pink", text: "Pinned" },
         },
         pinnedNoteId: "note00001",
+        labelColors: { ux: "purple", nope: "neon" },
       },
     };
     const { res, json } = await newBoard(http, { import: exported });
@@ -203,6 +205,9 @@ const tests = {
     assert.equal(board.pinnedNoteId, "note00001");
     assert.equal(board.notes.note00001.w, 120, "sizes are clamped");
     assert.deepEqual([board.cards.card00001.number, board.notes.note00001.number], [7, 3], "imports keep reference numbers, so #mentions still resolve");
+    assert.equal(board.cards.card00001.startDate, "2026-11-15");
+    assert.deepEqual(board.cards.card00001.checklist, [{ id: "item00001", text: "Draft", done: true }, { id: "item00002", text: "Review", done: false }]);
+    assert.deepEqual(board.labelColors, { ux: "purple" }, "invalid label colors are dropped");
     c.socket.close();
 
     const bad = await newBoard(http, { import: { format: "trello" } });

@@ -1,4 +1,4 @@
-import { CANVAS, NOTE_SIZE, cardsByColumn, sortedColumns, type BoardData, type Op } from "./board";
+import { CANVAS, LIMITS, NOTE_SIZE, cardsByColumn, checklistProgress, sortedColumns, type BoardData, type Op } from "./board";
 import { parseOp } from "./ops";
 
 /** Envelope for board exports; `version` bumps if the shape changes. */
@@ -28,12 +28,16 @@ export function toMarkdown(board: BoardData): string {
       const meta = [
         ...card.labels.map((l) => `#${l.replace(/\s+/g, "-")}`),
         ...card.assignees.map((a) => `@${a.replace(/\s+/g, "-")}`),
+        card.startDate && `starts ${card.startDate}`,
         card.dueDate && `due ${card.dueDate}`,
       ].filter(Boolean);
-      lines.push(`- [ ] ${card.title}${meta.length ? ` — ${meta.join(" ")}` : ""}`);
+      const { done, total } = checklistProgress(card);
+      const finished = total > 0 && done === total ? "x" : " ";
+      lines.push(`- [${finished}] ${card.title}${meta.length ? ` — ${meta.join(" ")}` : ""}${total ? ` (${done}/${total})` : ""}`);
       if (card.description) {
         for (const l of card.description.split("\n")) lines.push(`  ${l}`.trimEnd());
       }
+      for (const item of card.checklist) lines.push(`  - [${item.done ? "x" : " "}] ${item.text}`);
     }
     lines.push("");
   }
@@ -86,8 +90,18 @@ export function importToOps(data: unknown): { ops: Op[]; dropped: number } | nul
     // Exports from before multiple assignees have a single `assignee` string.
     const assignees = Array.isArray(c.assignees) ? c.assignees : typeof c.assignee === "string" && c.assignee ? [c.assignee] : [];
     if (assignees.length) patch.assignees = assignees;
+    if (c.startDate) patch.startDate = c.startDate;
     if (c.dueDate) patch.dueDate = c.dueDate;
     if (Object.keys(patch).length) raw.push({ kind: "card.update", id: c.id, patch });
+    if (Array.isArray(c.checklist)) {
+      for (const item of c.checklist.slice(0, LIMITS.checklist)) raw.push({ kind: "checklist.add", id: c.id, item });
+    }
+  }
+
+  if (isObj(board.labelColors)) {
+    for (const [l, color] of Object.entries(board.labelColors).slice(0, LIMITS.labelColors)) {
+      raw.push({ kind: "label.color", label: l, color });
+    }
   }
 
   for (const n of values(board.notes).sort((a, b) => Number(a.z) - Number(b.z))) {

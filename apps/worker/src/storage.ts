@@ -5,12 +5,15 @@ import {
   DEFAULT_PERMISSIONS,
   parsePermissions,
   LIMITS,
+  applyChecklistOp,
   cardToNoteText,
+  labelKey,
   noteToCardFields,
   positionBetween,
   type BoardData,
   type Card,
   type CardPatch,
+  type ChecklistItem,
   type Color,
   type Column,
   type ColumnPatch,
@@ -23,8 +26,8 @@ import {
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. */
-export const SCHEMA_VERSION = 7;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. 8: cards.start_date, cards.checklist. */
+export const SCHEMA_VERSION = 8;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
@@ -54,7 +57,10 @@ interface CardRow extends Row {
   labels: string;
   /** JSON array (schema v5); the old single `assignee` column is kept but unused. */
   assignees: string;
+  start_date: string | null;
   due_date: string | null;
+  /** JSON array of ChecklistItem (schema v8). */
+  checklist: string;
   updated_at: number;
   updated_by: string;
   deleted_at: number | null;
@@ -101,7 +107,9 @@ const toCard = (r: CardRow): Card => ({
   color: r.color as Color | null,
   labels: JSON.parse(r.labels) as string[],
   assignees: JSON.parse(r.assignees) as string[],
+  startDate: r.start_date,
   dueDate: r.due_date,
+  checklist: JSON.parse(r.checklist) as ChecklistItem[],
   updatedAt: r.updated_at,
   updatedBy: r.updated_by,
 });
@@ -174,7 +182,9 @@ export class BoardStorage {
           labels TEXT NOT NULL DEFAULT '[]',
           assignee TEXT NOT NULL DEFAULT '',
           assignees TEXT NOT NULL DEFAULT '[]',
+          start_date TEXT,
           due_date TEXT,
+          checklist TEXT NOT NULL DEFAULT '[]',
           updated_at INTEGER NOT NULL,
           updated_by TEXT NOT NULL,
           deleted_at INTEGER
@@ -220,6 +230,9 @@ export class BoardStorage {
         this.sql.exec("UPDATE notes SET created_at = updated_at");
       }
       this.numberExistingItems();
+      // v8: start dates and checklists.
+      this.addColumn("cards", "start_date", "TEXT");
+      this.addColumn("cards", "checklist", "TEXT NOT NULL DEFAULT '[]'");
       this.setMeta("schema_version", String(SCHEMA_VERSION));
     });
   }
@@ -450,6 +463,11 @@ export class BoardStorage {
 
   // ---- reads ----
 
+  private labelColors(): Record<string, Color> {
+    const raw = this.getMeta("label_colors");
+    return raw ? (JSON.parse(raw) as Record<string, Color>) : {};
+  }
+
   snapshot(): BoardData {
     const columns: Record<string, Column> = {};
     for (const r of this.sql.exec<ColumnRow>("SELECT * FROM columns WHERE deleted_at IS NULL")) {
@@ -472,6 +490,7 @@ export class BoardStorage {
       pinnedNoteId: this.getMeta("pinned_note_id") || null,
       permissions: this.permissions(),
       hasHost: this.hasHost(),
+      labelColors: this.labelColors(),
     };
   }
 
@@ -772,6 +791,38 @@ export class BoardStorage {
         return { ...op, position, number };
       }
 
+      case "checklist.add":
+      case "checklist.update":
+      case "checklist.delete": {
+        const card = toCard(this.liveCard(op.id));
+        if (op.kind === "checklist.add" && card.checklist.length >= LIMITS.checklist) {
+          reject(`A card can have at most ${LIMITS.checklist} checklist items`);
+        }
+        const checklist = applyChecklistOp(card.checklist, op);
+        if (!checklist) reject(op.kind === "checklist.add" ? "Checklist item already exists" : "That checklist item was removed");
+        this.sql.exec(
+          "UPDATE cards SET checklist = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+          JSON.stringify(checklist),
+          now,
+          actor,
+          op.id,
+        );
+        return op;
+      }
+
+      case "label.color": {
+        const colors = this.labelColors();
+        const key = labelKey(op.label);
+        if (op.color) {
+          if (!(key in colors) && Object.keys(colors).length >= LIMITS.labelColors) {
+            reject(`A board can have at most ${LIMITS.labelColors} label colors`);
+          }
+          colors[key] = op.color;
+        } else delete colors[key];
+        this.setMeta("label_colors", JSON.stringify(colors));
+        return op;
+      }
+
       case "card.toNote": {
         const card = toCard(this.liveCard(op.id));
         if (this.noteRow(op.noteId)) reject("Note already exists");
@@ -830,6 +881,7 @@ export class BoardStorage {
     if (patch.color !== undefined) sets.push("color = ?"), args.push(patch.color);
     if (patch.labels !== undefined) sets.push("labels = ?"), args.push(JSON.stringify(patch.labels));
     if (patch.assignees !== undefined) sets.push("assignees = ?"), args.push(JSON.stringify(patch.assignees));
+    if (patch.startDate !== undefined) sets.push("start_date = ?"), args.push(patch.startDate);
     if (patch.dueDate !== undefined) sets.push("due_date = ?"), args.push(patch.dueDate);
     this.sql.exec(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
   }

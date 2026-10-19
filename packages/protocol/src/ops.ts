@@ -5,6 +5,7 @@ import {
   NOTE_SIZE,
   isPositionKey,
   type CardPatch,
+  type ChecklistPatch,
   type Color,
   type ColumnPatch,
   type NotePatch,
@@ -121,12 +122,40 @@ function cardPatch(v: unknown): CardPatch | null {
     if (clean.some((n) => n.length === 0 || n.length > LIMITS.assignee)) return null;
     patch.assignees = [...new Set(clean)];
   }
-  if ("dueDate" in v) {
-    const d = v.dueDate;
+  for (const key of ["startDate", "dueDate"] as const) {
+    if (!(key in v)) continue;
+    const d = v[key];
     if (d !== null && !(typeof d === "string" && isValidDate(d))) return null;
-    patch.dueDate = d as string | null;
+    patch[key] = d as string | null;
   }
   return Object.keys(patch).length ? patch : null;
+}
+
+function checklistText(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length > 0 && t.length <= LIMITS.checklistItem ? t : null;
+}
+
+function checklistPatch(v: unknown): ChecklistPatch | null {
+  if (!isObj(v)) return null;
+  const patch: ChecklistPatch = {};
+  if ("text" in v) {
+    const t = checklistText(v.text);
+    if (t === null) return null;
+    patch.text = t;
+  }
+  if ("done" in v) {
+    if (typeof v.done !== "boolean") return null;
+    patch.done = v.done;
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
+function label(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length > 0 && t.length <= LIMITS.label ? t : null;
 }
 
 /**
@@ -199,6 +228,26 @@ export function parseOp(v: unknown): Op | null {
       return isId(v.id) && isId(v.columnId) && isPositionKey(v.position)
         ? { kind: "card.move", id: v.id, columnId: v.columnId, position: v.position }
         : null;
+    case "checklist.add": {
+      const item = isObj(v.item) ? v.item : null;
+      const text = item && checklistText(item.text);
+      const index = v.index;
+      if (!isId(v.id) || !item || !isId(item.id) || !text || (index !== undefined && !isInt(index, 0, LIMITS.checklist))) return null;
+      const op: Op = { kind: "checklist.add", id: v.id, item: { id: item.id, text, done: item.done === true } };
+      if (index !== undefined) op.index = index;
+      return op;
+    }
+    case "checklist.update": {
+      const patch = checklistPatch(v.patch);
+      return isId(v.id) && isId(v.itemId) && patch ? { kind: "checklist.update", id: v.id, itemId: v.itemId, patch } : null;
+    }
+    case "checklist.delete":
+      return isId(v.id) && isId(v.itemId) ? { kind: "checklist.delete", id: v.id, itemId: v.itemId } : null;
+    case "label.color": {
+      const l = label(v.label);
+      const c = color(v.color);
+      return l && c !== undefined ? { kind: "label.color", label: l, color: c } : null;
+    }
     default:
       return null;
   }
