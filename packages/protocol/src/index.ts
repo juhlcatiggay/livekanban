@@ -7,6 +7,7 @@ import type { BoardData, CommittedOp, Op } from "./board";
 import { ITEM_ID_RE, parseOp } from "./ops";
 
 export * from "./board";
+export * from "./export";
 export * from "./ops";
 
 /** PartyServer namespace: the kebab-cased `BoardRoom` binding name. */
@@ -25,9 +26,28 @@ export const MAX_NAME_LENGTH = 40;
 
 /** WebSocket close codes in the private 4000–4999 range. */
 export const CloseCode = {
+  /** Repeatedly exceeded the per-connection message rate. */
+  RateLimited: 4008,
   Expired: 4404,
   RoomFull: 4429,
 } as const;
+
+/** Something in the 7-day trash. A deleted column's cards come back with it. */
+export interface TrashItem {
+  kind: "column" | "card" | "note";
+  id: string;
+  /** Title, or the start of a note's text. */
+  label: string;
+  deletedAt: number;
+  /** For columns: how many cards will be restored with it. */
+  cardCount?: number;
+}
+
+/** One of the board's daily backups (UTC day, YYYY-MM-DD). */
+export interface BackupInfo {
+  day: string;
+  at: number;
+}
 
 export interface Identity {
   clientId: string;
@@ -70,7 +90,11 @@ export type ClientMessage =
   | { t: "presence"; patch: PresencePatch }
   | { t: "profile"; name: string; color: string }
   | { t: "lock"; cardId: string }
-  | { t: "unlock"; cardId: string };
+  | { t: "unlock"; cardId: string }
+  /** Asks for the trash and backup list; answered with `trash`. */
+  | { t: "trash" }
+  /** Asks for one daily backup; answered with `backup`. */
+  | { t: "backup"; day: string };
 
 /** How a (re)connecting client catches up: full state, or the ops it missed. */
 export type Sync =
@@ -89,6 +113,11 @@ export type ServerMessage =
   | { t: "reject"; cid: string; reason: string }
   /** Someone else's committed op. */
   | { t: "opb"; op: CommittedOp }
+  /** Activity moved the expiry date. */
+  | { t: "kept"; keptUntil: number }
+  | { t: "trash"; items: TrashItem[]; backups: BackupInfo[] }
+  /** A daily backup's board, or null if it no longer exists. */
+  | { t: "backup"; day: string; board: BoardData | null }
   /** Someone else already holds the card you tried to pick up. */
   | { t: "lockDenied"; cardId: string; by: string }
   | CursorBroadcast
@@ -171,6 +200,10 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
       const profile = parseProfile(m.name, m.color);
       return profile ? { t: "profile", ...profile } : null;
     }
+    case "trash":
+      return { t: "trash" };
+    case "backup":
+      return typeof m.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(m.day) ? { t: "backup", day: m.day } : null;
     case "lock":
     case "unlock":
       return typeof m.cardId === "string" && ITEM_ID_RE.test(m.cardId) ? { t: m.t, cardId: m.cardId } : null;

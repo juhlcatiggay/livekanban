@@ -6,27 +6,51 @@ import {
   MAX_MESSAGE_LENGTH,
   encode,
   parseClientMessage,
+  type Op,
   type OpKind,
   type Peer,
   type ServerMessage,
   type Sync,
 } from "@livekanban/protocol";
+import { roomTimings, type RoomTimings } from "./config";
 import { BoardStorage } from "./storage";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** A drag lock lapses if its holder hasn't moved the pointer for this long. */
 const LOCK_STALE_MS = 15_000;
 /** Ops that a drag lock blocks for everyone but the holder. */
 const HELD_KINDS = new Set<OpKind>(["card.move", "card.delete", "card.toNote", "note.move", "note.delete", "note.toCard"]);
+/** Ops that put something in the trash, so the purge alarm may need to move earlier. */
+const DELETE_KINDS = new Set<OpKind>(["column.delete", "card.delete", "note.delete"]);
+
+/** Per-connection limits from the plan: 60 presence messages/s and 10 ops/s, with a little burst room. */
+const RATE = {
+  presence: { perSecond: 60, burst: 60 },
+  ops: { perSecond: 10, burst: 20 },
+  /** Dropped messages within 10 s before the socket is closed as abusive. */
+  abuseDrops: 600,
+} as const;
+
+interface Bucket {
+  presence: number;
+  ops: number;
+  at: number;
+  dropped: number;
+  windowStart: number;
+}
 
 /**
  * One Durable Object per board. Presence lives in each socket's attachment
  * (connection state); board data lives in this object's SQLite database.
+ *
+ * One alarm drives three jobs, always set to whichever is due first:
+ * expiry (60 days without activity), trash purge (7 days after deletion)
+ * and daily backups (when there was activity since the last one).
  */
 export class BoardRoom extends Server<Env> {
   static options = { hibernate: true };
 
   private readonly store = new BoardStorage(this.ctx.storage.sql, (fn) => this.ctx.storage.transactionSync(fn));
+  private readonly timings: RoomTimings = roomTimings(this.env);
 
   /**
    * Last cursor message time per connection, for lock staleness. In memory only:
@@ -34,10 +58,8 @@ export class BoardRoom extends Server<Env> {
    * (nobody has sent anything for a while).
    */
   private readonly lastMove = new Map<string, number>();
-
-  private get expiryMs() {
-    return Number(this.env.EXPIRY_DAYS) * DAY_MS;
-  }
+  /** Rate-limit buckets; in memory, so they reset after hibernation (when nobody is sending). */
+  private readonly buckets = new Map<string, Bucket>();
 
   /** A board exists only if the create endpoint initialized it; visiting a URL never creates one. */
   private isInitialized(): boolean {
@@ -45,7 +67,7 @@ export class BoardRoom extends Server<Env> {
   }
 
   private keptUntil(): number {
-    return Number(this.store.getMeta("last_activity_at")) + this.expiryMs;
+    return this.store.lastActivityAt() + this.timings.expiryMs;
   }
 
   /** Drop anything an unknown or expired ID wrote (e.g. PartyServer's name record). */
@@ -77,6 +99,88 @@ export class BoardRoom extends Server<Env> {
     return undefined;
   }
 
+  // ---- activity, expiry, trash and backups ----
+
+  /**
+   * Opening or changing the board counts as activity. last_activity_at is
+   * written at most once per touch interval (an hour in production).
+   */
+  private touch(now = Date.now()) {
+    if (now - this.store.lastActivityAt() < this.timings.touchEveryMs) return;
+    this.store.touch(now);
+    this.broadcast(encode({ t: "kept", keptUntil: this.keptUntil() }));
+    this.ctx.waitUntil(this.schedule());
+  }
+
+  /**
+   * Points the alarm at the earliest due job. An alarm write is billed, so it
+   * only moves earlier: a later due time (the usual case, since activity
+   * pushes expiry out) waits for the current alarm, which reschedules itself.
+   */
+  private async schedule() {
+    const t = this.timings;
+    const now = Date.now();
+    const due = [this.keptUntil()];
+    const oldest = this.store.oldestDeletedAt();
+    if (oldest !== null) due.push(oldest + t.trashMs);
+    const lastBackup = this.store.lastBackupAt();
+    if (this.store.lastActivityAt() > lastBackup) {
+      due.push((lastBackup || Number(this.store.getMeta("created_at"))) + t.backupEveryMs);
+    }
+    const next = Math.max(Math.min(...due), now + 1000);
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || next < current) await this.ctx.storage.setAlarm(next);
+  }
+
+  async onAlarm() {
+    if (!this.isInitialized()) return;
+    const now = Date.now();
+    // Someone still connected is a visit, so the board stays.
+    if ([...this.getConnections()].length > 0) this.touch(now);
+    else if (now >= this.keptUntil()) {
+      // Removes the database and the alarm; later visits find no created_at and see "expired".
+      await this.ctx.storage.deleteAll();
+      return;
+    }
+    this.store.purgeTrash(now - this.timings.trashMs);
+    const lastBackup = this.store.lastBackupAt() || Number(this.store.getMeta("created_at"));
+    if (this.store.lastActivityAt() > this.store.lastBackupAt() && now >= lastBackup + this.timings.backupEveryMs) {
+      this.store.takeBackup(now);
+    }
+    await this.schedule();
+  }
+
+  // ---- rate limits ----
+
+  /** Token bucket per connection. Repeated flooding closes the socket. */
+  private allow(conn: Connection, kind: "presence" | "ops"): boolean {
+    const now = Date.now();
+    const b = this.buckets.get(conn.id) ?? {
+      presence: RATE.presence.burst,
+      ops: RATE.ops.burst,
+      at: now,
+      dropped: 0,
+      windowStart: now,
+    };
+    const elapsed = (now - b.at) / 1000;
+    b.presence = Math.min(RATE.presence.burst, b.presence + elapsed * RATE.presence.perSecond);
+    b.ops = Math.min(RATE.ops.burst, b.ops + elapsed * RATE.ops.perSecond);
+    b.at = now;
+    this.buckets.set(conn.id, b);
+    if (b[kind] >= 1) {
+      b[kind] -= 1;
+      return true;
+    }
+    if (now - b.windowStart > 10_000) {
+      b.windowStart = now;
+      b.dropped = 0;
+    }
+    if (++b.dropped > RATE.abuseDrops) conn.close(CloseCode.RateLimited, "Too many messages");
+    return false;
+  }
+
+  // ---- lifecycle ----
+
   onStart() {
     // Boards created before a schema change are upgraded on first wake.
     if (this.isInitialized() && this.store.needsMigration()) this.store.migrate();
@@ -88,8 +192,25 @@ export class BoardRoom extends Server<Env> {
     // Internal only: the Worker's create endpoint calls this; external POSTs are blocked in the Worker.
     if (request.method === "POST" && url.pathname === "/init") {
       if (this.isInitialized()) return new Response("Board exists", { status: 409 });
-      this.store.init(Date.now(), () => nanoid(10));
-      return new Response(null, { status: 201 });
+      const { ops = [] } = (await request.json().catch(() => ({}))) as { ops?: Op[] };
+      const now = Date.now();
+      this.store.init(now, () => nanoid(10), { starterColumns: ops.length === 0 });
+      // Imports replay as ordinary ops, so they get the same validation and limits as live edits.
+      let skipped = 0;
+      for (const op of ops) if (!this.store.commit(op, "Import", now).ok) skipped++;
+      await this.schedule();
+      return Response.json({ imported: ops.length - skipped, skipped }, { status: 201 });
+    }
+
+    // Internal only (admin takedown via the Worker): disconnect everyone and erase the board.
+    if (request.method === "POST" && url.pathname === "/admin/delete") {
+      if (!this.isInitialized()) return new Response("Not found", { status: 404 });
+      for (const conn of this.getConnections()) {
+        this.send(conn, { t: "expired" });
+        conn.close(CloseCode.Expired, "Board removed");
+      }
+      await this.ctx.storage.deleteAll();
+      return new Response(null, { status: 204 });
     }
 
     if (request.method === "GET") {
@@ -130,12 +251,20 @@ export class BoardRoom extends Server<Env> {
 
     // Cursor: the most frequent message. Broadcast and forget, never stored in SQLite.
     if (Array.isArray(msg)) {
-      if (!conn.state) return;
+      if (!conn.state || !this.allow(conn, "presence")) return;
       const [, anchor, fx, fy] = msg;
       this.lastMove.set(conn.id, Date.now());
       // Rounded to keep relayed messages around 40 bytes.
       const round = (n: number) => Math.round(n * 1e4) / 1e4;
       this.broadcast(JSON.stringify(["c", conn.id, anchor, round(fx), round(fy)]), [conn.id]);
+      return;
+    }
+
+    if (msg.t === "op" || msg.t === "badOp") {
+      if (!this.allow(conn, "ops")) {
+        return this.send(conn, { t: "reject", cid: msg.cid, reason: "You're making changes too quickly; slow down" });
+      }
+    } else if (msg.t !== "hello" && !this.allow(conn, "presence")) {
       return;
     }
 
@@ -153,6 +282,7 @@ export class BoardRoom extends Server<Env> {
           away: false,
         };
         conn.setState(peer);
+        this.touch();
         const peers: Peer[] = [];
         for (const other of this.getConnections<Peer>()) {
           if (other.id !== conn.id && other.state) peers.push(other.state as Peer);
@@ -193,8 +323,18 @@ export class BoardRoom extends Server<Env> {
         if ((op.kind === "card.move" || op.kind === "note.move") && peer.holding === op.id) {
           this.updatePeer(conn, { holding: null });
         }
+        this.touch();
+        if (DELETE_KINDS.has(op.kind)) this.ctx.waitUntil(this.schedule());
         return;
       }
+
+      case "trash":
+        if (conn.state) this.send(conn, { t: "trash", items: this.store.trash(), backups: this.store.backups() });
+        return;
+
+      case "backup":
+        if (conn.state) this.send(conn, { t: "backup", day: msg.day, board: this.store.backup(msg.day) });
+        return;
 
       // ---- presence: kept in connection state, never in SQLite ----
 
@@ -223,6 +363,7 @@ export class BoardRoom extends Server<Env> {
 
   onClose(conn: Connection<Peer>) {
     this.lastMove.delete(conn.id);
+    this.buckets.delete(conn.id);
     // Leaving also releases the peer's lock, since locks live in peer state.
     if (conn.state) this.broadcast(encode({ t: "leave", connectionId: conn.id }), [conn.id]);
   }

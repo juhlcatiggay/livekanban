@@ -178,7 +178,7 @@ test("deleting a note can be undone", async ({ browser }) => {
   await note(ada, "Keep me").getByLabel("Note options").click();
   await ada.getByRole("button", { name: "Delete note" }).click();
   await expect(note(ada, "Keep me")).toHaveCount(0);
-  await ada.getByRole("button", { name: "Undo" }).click();
+  await ada.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(note(ada, "Keep me")).toBeVisible();
   await settled(ada);
   await ada.reload();

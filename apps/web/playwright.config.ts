@@ -20,7 +20,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `pnpm --filter worker exec wrangler dev --port ${WORKER_PORT} --var ALLOWED_ORIGINS:http://localhost:${WEB_PORT}`,
+      command: `pnpm --filter worker exec wrangler dev --port ${WORKER_PORT} --var ALLOWED_ORIGINS:http://localhost:${WEB_PORT} --var CREATE_LIMIT_PER_HOUR:100000 --var TURNSTILE_SECRET:`,
       port: WORKER_PORT,
       reuseExistingServer: false,
     },
@@ -30,7 +30,8 @@ export default defineConfig({
       port: WEB_PORT,
       reuseExistingServer: false,
       timeout: 180_000,
-      env: { NEXT_PUBLIC_PARTY_HOST: PARTY_HOST },
+      // Empty overrides any real key in .env.local, so tests never face a Turnstile challenge.
+      env: { NEXT_PUBLIC_PARTY_HOST: PARTY_HOST, NEXT_PUBLIC_TURNSTILE_SITE_KEY: "" },
     },
   ],
 });

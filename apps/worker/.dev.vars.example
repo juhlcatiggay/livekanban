@@ -1,0 +1,5 @@
+# Copy to .dev.vars (gitignored) for local secrets. Production: wrangler secret put <NAME>.
+# Turnstile secret key; when set, creating a board requires a valid token.
+TURNSTILE_SECRET=
+# Random string that enables DELETE /admin/boards/:id (pnpm --filter worker admin:delete).
+ADMIN_TOKEN=

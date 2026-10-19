@@ -7,6 +7,7 @@ import {
   applyOp,
   encode,
   parseOp,
+  type BackupInfo,
   type BoardData,
   type ClientMessage,
   type CommittedOp,
@@ -15,9 +16,11 @@ import {
   type Peer,
   type PresencePatch,
   type ServerMessage,
+  type TrashItem,
 } from "@livekanban/protocol";
 import { PARTY_HOST } from "./config";
 import { clearCursors, dropCursor, pushCursor } from "./cursors";
+import { HISTORY_LIMIT, coalesces, invert, type HistoryEntry } from "./history";
 import { saveIdentity } from "./identity";
 import { forgetBoard, rememberBoard } from "./recent-boards";
 
@@ -39,9 +42,21 @@ interface BoardState {
   error: string | null;
   /** Card this tab tried to pick up while someone else held it. */
   lockDenied: string | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Latest trash listing, after requestTrash(). */
+  trash: { items: TrashItem[]; backups: BackupInfo[] } | null;
 
-  /** Applies `op` optimistically and sends it to the room. */
-  dispatch: (op: Op) => void;
+  /**
+   * Applies `op` optimistically and sends it to the room. Recorded for
+   * undo/redo unless `record` is false.
+   */
+  dispatch: (op: Op, options?: { record?: boolean }) => void;
+  undo: () => void;
+  redo: () => void;
+  requestTrash: () => void;
+  /** Resolves with a daily backup's board, or null if it no longer exists. */
+  fetchBackup: (day: string) => Promise<BoardData | null>;
   /** Sends this tab's cursor; a null anchor hides it. */
   sendCursor: (anchor: string | null, fx: number, fy: number) => void;
   setPresence: (patch: PresencePatch) => void;
@@ -64,7 +79,14 @@ const initialState = {
   board: null,
   error: null,
   lockDenied: null,
+  canUndo: false,
+  canRedo: false,
+  trash: null,
   dispatch: noop,
+  undo: noop,
+  redo: noop,
+  requestTrash: noop,
+  fetchBackup: () => Promise.resolve(null),
   sendCursor: noop,
   setPresence: noop,
   setProfile: noop,
@@ -122,12 +144,33 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
 
   const sendOp = (p: PendingOp) => send({ t: "op", cid: p.cid, op: p.wire });
 
-  const dispatch = (op: Op) => {
+  /** This tab's own changes, newest last. Remote edits aren't undoable from here. */
+  let undoStack: HistoryEntry[] = [];
+  let redoStack: HistoryEntry[] = [];
+  const publishHistory = () => set({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
+
+  /** Records `op` (about to be applied) with its inverse against the current view. */
+  const record = (stack: HistoryEntry[], op: Op): HistoryEntry[] => {
+    const board = useBoard.getState().board;
+    const inverse = board ? invert(board, op) : null;
+    if (!inverse) return stack;
+    const entry: HistoryEntry = { op, inverse, at: Date.now() };
+    // Typing into a field produces a save every 300 ms; keep the oldest inverse so one undo restores it.
+    if (coalesces(stack.at(-1), entry)) return [...stack.slice(0, -1), { ...entry, inverse: stack.at(-1)!.inverse }];
+    return [...stack, entry].slice(-HISTORY_LIMIT);
+  };
+
+  const dispatch = (op: Op, { record: recordIt = true } = {}) => {
     // Normalize exactly as the room will (trimming, deduped labels) so the optimistic view matches.
     const wire = parseOp(op);
     if (!wire) {
       set({ error: "That change isn't valid." });
       return;
+    }
+    if (recordIt) {
+      undoStack = record(undoStack, op);
+      redoStack = [];
+      publishHistory();
     }
     // Restores carry the deleted item locally so it reappears before the room confirms.
     const p: PendingOp = { cid: nanoid(12), op: { ...op, ...wire } as Op, wire, resent: false };
@@ -136,6 +179,29 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
     sendOp(p);
     if (wire.kind === "board.update") rememberBoard(boardId, wire.title);
   };
+
+  /** Applies the top entry's inverse and moves it to the other stack, inverted again. */
+  const step = (from: "undo" | "redo") => {
+    const source = from === "undo" ? undoStack : redoStack;
+    const entry = source.at(-1);
+    if (!entry) return;
+    if (from === "undo") undoStack = undoStack.slice(0, -1);
+    else redoStack = redoStack.slice(0, -1);
+    const back = record([], entry.inverse)[0];
+    if (back) {
+      if (from === "undo") redoStack = [...redoStack, back];
+      else undoStack = [...undoStack, back].slice(-HISTORY_LIMIT);
+    }
+    dispatch(entry.inverse, { record: false });
+    publishHistory();
+  };
+
+  const backupWaiters = new Map<string, ((board: BoardData | null) => void)[]>();
+  const fetchBackup = (day: string) =>
+    new Promise<BoardData | null>((resolve) => {
+      backupWaiters.set(day, [...(backupWaiters.get(day) ?? []), resolve]);
+      send({ t: "backup", day });
+    });
 
   const setPresence = (patch: PresencePatch) => {
     presence = { ...presence, ...patch };
@@ -154,6 +220,10 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
       ...initialState,
       me: identity,
       dispatch,
+      undo: () => step("undo"),
+      redo: () => step("redo"),
+      requestTrash: () => send({ t: "trash" }),
+      fetchBackup,
       setPresence,
       setProfile,
       sendCursor: (anchor, fx, fy) => send(["c", anchor, fx, fy]),
@@ -240,6 +310,16 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
         applyCommitted(msg.op);
         recompute();
         break;
+      case "kept":
+        set({ keptUntil: msg.keptUntil });
+        break;
+      case "trash":
+        set({ trash: { items: msg.items, backups: msg.backups } });
+        break;
+      case "backup":
+        for (const resolve of backupWaiters.get(msg.day) ?? []) resolve(msg.board);
+        backupWaiters.delete(msg.day);
+        break;
       case "lockDenied":
         set({ lockDenied: msg.cardId, error: `${msg.by} is moving this card` });
         break;
@@ -256,6 +336,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
     pending = pending.map((p) => ({ ...p, resent: true }));
     if (event.code === CloseCode.Expired) return stop("expired");
     if (event.code === CloseCode.RoomFull) return stop("full");
+    if (event.code === CloseCode.RateLimited) set({ error: "Too many messages from this tab; reconnecting…" });
     const { status } = useBoard.getState();
     if (status === "open" || status === "connecting") set({ status: "reconnecting", peers: {} });
   });
@@ -269,7 +350,17 @@ export function connectBoard(boardId: string, initialIdentity: Identity): () => 
     synced = false;
     clearCursors();
     socket.close();
-    set({ dispatch: noop, sendCursor: noop, setPresence: noop, setProfile: noop, lockCard: noop, unlockCard: noop });
+    set({
+      dispatch: noop,
+      undo: noop,
+      redo: noop,
+      requestTrash: noop,
+      sendCursor: noop,
+      setPresence: noop,
+      setProfile: noop,
+      lockCard: noop,
+      unlockCard: noop,
+    });
   };
 }
 

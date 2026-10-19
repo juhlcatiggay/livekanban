@@ -6,6 +6,8 @@ import { unstable_dev } from "wrangler";
 const worker = await unstable_dev("src/index.ts", {
   config: "wrangler.jsonc",
   persist: false,
+  // Tests ignore any real keys in .dev.vars.
+  vars: { CREATE_LIMIT_PER_HOUR: "100000", TURNSTILE_SECRET: "", ADMIN_TOKEN: "" },
   experimental: { disableExperimentalWarning: true },
 });
 const base = `http://${worker.address}:${worker.port}`;

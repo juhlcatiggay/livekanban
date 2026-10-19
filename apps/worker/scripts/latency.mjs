@@ -30,6 +30,7 @@ if (args.host) {
     config: "wrangler.jsonc",
     persist: false,
     logLevel: "warn",
+    vars: { TURNSTILE_SECRET: "" },
     experimental: { disableExperimentalWarning: true },
   });
   http = `http://${worker.address}:${worker.port}`;
