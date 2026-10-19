@@ -156,9 +156,29 @@ export type Op =
 export type OpKind = Op["kind"];
 
 /** An op as committed by the room: canonical form plus its sequence number. */
+/**
+ * What an op changed, captured by the room as it commits (before the change),
+ * so history can say "moved “Fix login” from To do to Doing" even after the
+ * card is renamed or deleted.
+ */
+export interface OpDetail {
+  /** The card's title (before the change). */
+  card?: string;
+  /** The column's title (before the change); for card ops, the card's column. */
+  column?: string;
+  /** For moves between columns: the destination column's title. */
+  to?: string;
+  /** First line of the note. */
+  note?: string;
+  /** The checklist item's text (before the change). */
+  item?: string;
+}
+
 export interface CommittedOp {
   seq: number;
   op: Op;
+  /** Set by rooms on schema v9 and later; older log entries have none. */
+  detail?: OpDetail;
   /** Display name of the person who made the change. */
   by: string;
   at: number;
@@ -217,10 +237,11 @@ export function cardToNoteText(card: Pick<Card, "title" | "description"> & { che
 export const CONVERTED_NOTE_SIZE = { w: 260, h: 200 } as const;
 
 /**
- * A mention of card or note 12 is the Markdown link `[#12](#12)`, inserted by
- * the # picker. Plain text like "Top #1 Fan" is never a mention.
+ * A mention of card or note 12 is the Markdown link `[@12](#12)`, inserted by
+ * the @ picker (older mentions read `[#12](#12)`; any link to `#12` counts).
+ * Plain text like "Top #1 Fan" is never a mention.
  */
-export const mentionMarkdown = (number: number) => `[#${number}](#${number})`;
+export const mentionMarkdown = (number: number) => `[@${number}](#${number})`;
 
 /** The item number a link's href mentions, or null if it isn't a mention. */
 export function mentionNumber(href: string | undefined): number | null {
@@ -234,6 +255,19 @@ export function findByNumber(board: Pick<BoardData, "cards" | "notes">, number: 
   for (const card of Object.values(board.cards)) if (card.number === number) return { kind: "card", card };
   for (const note of Object.values(board.notes)) if (note.number === number) return { kind: "note", note };
   return null;
+}
+
+/** The id of the card or note an op is about, for per-item history. */
+export function opTarget(op: Op): string | null {
+  switch (op.kind) {
+    case "board.update":
+    case "board.pin":
+    case "board.permissions":
+    case "label.color":
+      return null;
+    default:
+      return op.id;
+  }
 }
 
 export function topZ(board: Pick<BoardData, "notes">): number {

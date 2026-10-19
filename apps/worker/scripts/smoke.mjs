@@ -644,7 +644,7 @@ const tests = {
     await host.next(); // join(guest)
 
     guest.send({ t: "deleteBoard" });
-    assert.deepEqual(await guest.next(), { t: "deleteRefused", reason: "Only the host can delete this board" });
+    assert.deepEqual(await guest.next(), { t: "refused", reason: "Only the host can delete this board" });
 
     host.send({ t: "deleteBoard" });
     assert.deepEqual(await guest.until((m) => m.t === "deleted"), { t: "deleted", by: "Hana" });
@@ -653,6 +653,98 @@ const tests = {
     assert.equal((await (await fetch(`${base}/parties/board-room/${id}`)).json()).status, "expired");
     const again = connect(id);
     assert.equal((await again.next()).t, "expired");
+  },
+
+  async "a board can start with a name, host settings and a password"() {
+    const post = (body) => fetch(`${base}/api/boards`, { method: "POST", body: JSON.stringify(body) });
+    assert.equal((await post({ password: "abc" })).status, 400, "passwords have a minimum length");
+    assert.equal((await post({ title: " " })).status, 400);
+    assert.equal((await post({ permissions: { renameBoard: "yes" } })).status, 400);
+
+    const perms = { renameBoard: false, editBulletin: true, editCards: true, moveCards: false };
+    const res = await post({ title: "  Team plan ", password: "open sesame", permissions: perms });
+    assert.equal(res.status, 201);
+    const { id, hostKey } = await res.json();
+    assert.deepEqual(await (await fetch(`${base}/parties/board-room/${id}`)).json().then((s) => s.locked), true);
+
+    const enter = async (password, key) => {
+      const c = connect(id);
+      await c.opened;
+      c.send({ ...hello("Gus", 0, key), password });
+      return Object.assign(c, { first: await c.next() });
+    };
+    // The host walks in; the board has the chosen name and settings.
+    const host = await enter(undefined, hostKey);
+    assert.equal(host.first.t, "welcome");
+    assert.equal(host.first.locked, true);
+    assert.equal(host.first.sync.board.title, "Team plan");
+    assert.deepEqual(host.first.sync.board.permissions, perms);
+
+    // Others need the password, and nothing works before it.
+    const guest = await enter(undefined);
+    assert.deepEqual(guest.first, { t: "passwordRequired", wrong: false });
+    guest.send({ t: "op", cid: "x1", op: { kind: "board.update", title: "Hacked" } });
+    guest.send({ t: "history" });
+    guest.send({ ...hello("Gus"), password: "wrong one" });
+    assert.deepEqual(await guest.next(), { t: "reject", cid: "x1", reason: "Say hello first" });
+    assert.deepEqual(await guest.next(), { t: "passwordRequired", wrong: true });
+    guest.send({ ...hello("Gus"), password: "open sesame" });
+    const welcome = await guest.until((m) => m.t === "welcome");
+    assert.equal(welcome.sync.board.title, "Team plan");
+
+    // Only the host can change it; removing it opens the board.
+    guest.send({ t: "setPassword", password: "mine now" });
+    assert.deepEqual(await guest.until((m) => m.t === "refused"), { t: "refused", reason: "Only the host can change the password" });
+    host.send({ t: "setPassword", password: null });
+    assert.deepEqual(await guest.until((m) => m.t === "locked"), { t: "locked", locked: false });
+    const later = await enter(undefined);
+    assert.equal(later.first.t, "welcome");
+    host.send({ t: "setPassword", password: "new secret" });
+    await host.until((m) => m.t === "locked" && m.locked);
+
+    // Wrong guesses are limited per board.
+    const guesser = await enter("guess 0");
+    assert.equal(guesser.first.wrong, true);
+    for (let i = 1; i < 10; i++) {
+      guesser.send({ ...hello("Gus"), password: `guess ${i}` });
+      await guesser.next();
+    }
+    guesser.send({ ...hello("Gus"), password: "new secret" });
+    const blocked = await guesser.next();
+    assert.equal(blocked.t, "passwordRequired");
+    assert.ok(blocked.retryAfterMs > 0, "even the right password waits after too many wrong ones");
+    for (const c of [host, guest, later, guesser]) c.ws.close();
+  },
+
+  async "history lists changes newest first, with what they changed, per board or per card"() {
+    const id = await newBoard();
+    const a = await join(id, "Ada");
+    const col = firstColumnId(a.welcome);
+    const cols = Object.values(a.welcome.sync.board.columns).sort((x, y) => (x.position < y.position ? -1 : 1));
+    await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "Fix login" });
+    await op(a, { kind: "card.update", id: "card00001", patch: { title: "Fix sign-in" } });
+    await op(a, { kind: "checklist.add", id: "card00001", item: { id: "item00001", text: "Repro", done: false } });
+    await op(a, { kind: "checklist.update", id: "card00001", itemId: "item00001", patch: { done: true } });
+    const moved = await op(a, { kind: "card.move", id: "card00001", columnId: cols[1].id, position: "a0" });
+    assert.deepEqual(moved.op.detail, { card: "Fix sign-in", column: "To do", to: "Doing" }, "acks carry the detail too");
+    await op(a, { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Other" });
+
+    a.send({ t: "history" });
+    const all = await a.until((m) => m.t === "history");
+    assert.equal(all.more, false);
+    assert.deepEqual(
+      all.entries.map((e) => e.op.kind),
+      ["card.create", "card.move", "checklist.update", "checklist.add", "card.update", "card.create"],
+    );
+    assert.deepEqual(all.entries[2].detail, { card: "Fix sign-in", column: "To do", item: "Repro" });
+    assert.deepEqual(all.entries[4].detail, { card: "Fix login", column: "To do" }, "renames keep the old title");
+    assert.equal(all.entries[0].by, "Ada");
+
+    a.send({ t: "history", id: "card00001", before: all.entries[1].seq });
+    const page = await a.until((m) => m.t === "history");
+    assert.equal(page.id, "card00001");
+    assert.deepEqual(page.entries.map((e) => e.op.kind), ["checklist.update", "checklist.add", "card.update", "card.create"]);
+    a.ws.close();
   },
 
   async "create endpoint enforces allowed origins"() {

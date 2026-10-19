@@ -24,6 +24,10 @@ export const BOARD_ID_RE = /^[A-Za-z0-9_-]{21}$/;
 export const MAX_MESSAGE_LENGTH = 12_000;
 export const MAX_CONNECTIONS = 50;
 export const MAX_NAME_LENGTH = 40;
+/** Board passwords: optional, set by the host. */
+export const PASSWORD = { min: 4, max: 128 } as const;
+/** History entries per page. */
+export const HISTORY_PAGE = 50;
 
 /** WebSocket close codes in the private 4000–4999 range. */
 export const CloseCode = {
@@ -112,7 +116,7 @@ export const CURSOR_TICK_MS = 16;
 
 export type ClientMessage =
   /** `hostKey`, if this browser created the board (or opened a host link), makes it the host. */
-  | { t: "hello"; clientId: string; name: string; color: string; custom: boolean; lastSeq: number; hostKey?: string }
+  | { t: "hello"; clientId: string; name: string; color: string; custom: boolean; lastSeq: number; hostKey?: string; password?: string }
   | { t: "ping"; at: number }
   /** `cid` is the client's id for this op, echoed back in ack/reject. */
   | { t: "op"; cid: string; op: Op }
@@ -126,7 +130,11 @@ export type ClientMessage =
   /** Asks for one daily backup; answered with `backup`. */
   | { t: "backup"; day: string }
   /** Host only: deletes the whole board for everyone, permanently. */
-  | { t: "deleteBoard" };
+  | { t: "deleteBoard" }
+  /** Host only: sets (or with null removes) the password needed to open the board. */
+  | { t: "setPassword"; password: string | null }
+  /** Asks for history, newest first, older than `before` (a seq); `id` limits it to one card or note. */
+  | { t: "history"; before?: number; id?: string };
 
 /** How a (re)connecting client catches up: full state, or the ops it missed. */
 export type Sync =
@@ -134,7 +142,13 @@ export type Sync =
   | { type: "replay"; ops: CommittedOp[] };
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; you: Peer; peers: Peer[]; createdAt: number; keptUntil: number; sync: Sync }
+  | { t: "welcome"; self: string; you: Peer; peers: Peer[]; createdAt: number; keptUntil: number; sync: Sync; locked: boolean }
+  /** The board has a password and `hello` didn't carry the right one (`wrong`: one was given). Send hello again. */
+  | { t: "passwordRequired"; wrong: boolean; retryAfterMs?: number }
+  /** The host set or removed the board's password. */
+  | { t: "locked"; locked: boolean }
+  /** A page of history, newest first; `more` if older entries exist. */
+  | { t: "history"; id?: string; entries: CommittedOp[]; more: boolean }
   | { t: "join"; peer: Peer }
   /** A peer's presence, profile or lock changed (sent to everyone, including that peer). */
   | { t: "peer"; peer: Peer }
@@ -158,8 +172,8 @@ export type ServerMessage =
   | { t: "expired" }
   /** The host deleted the board; `by` is their name. The connection closes next. */
   | { t: "deleted"; by: string }
-  /** Your deleteBoard was refused. */
-  | { t: "deleteRefused"; reason: string };
+  /** A host-only request (deleteBoard, setPassword) from someone who isn't the host. */
+  | { t: "refused"; reason: string };
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const ANCHOR_RE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -222,7 +236,8 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
       const profile = parseProfile(m.name, m.color);
       if (!profile || !isShortString(m.clientId, 64) || !Number.isSafeInteger(m.lastSeq)) return null;
       const hostKey = typeof m.hostKey === "string" && m.hostKey.length <= 64 ? m.hostKey : undefined;
-      return { t: "hello", clientId: m.clientId, ...profile, custom: m.custom === true, lastSeq: m.lastSeq as number, hostKey };
+      const password = typeof m.password === "string" && m.password.length <= PASSWORD.max ? m.password : undefined;
+      return { t: "hello", clientId: m.clientId, ...profile, custom: m.custom === true, lastSeq: m.lastSeq as number, hostKey, password };
     }
     case "ping":
       return Number.isFinite(m.at) ? { t: "ping", at: m.at as number } : null;
@@ -243,6 +258,16 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
       return { t: "trash" };
     case "deleteBoard":
       return { t: "deleteBoard" };
+    case "setPassword":
+      if (m.password === null) return { t: "setPassword", password: null };
+      return typeof m.password === "string" && m.password.length >= PASSWORD.min && m.password.length <= PASSWORD.max
+        ? { t: "setPassword", password: m.password }
+        : null;
+    case "history": {
+      const before = m.before === undefined || (Number.isSafeInteger(m.before) && (m.before as number) > 0) ? (m.before as number | undefined) : null;
+      const id = m.id === undefined || (typeof m.id === "string" && ITEM_ID_RE.test(m.id)) ? (m.id as string | undefined) : null;
+      return before === null || id === null ? null : { t: "history", before, id };
+    }
     case "backup":
       return typeof m.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(m.day) ? { t: "backup", day: m.day } : null;
     case "lock":
