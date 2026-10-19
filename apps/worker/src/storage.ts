@@ -1,5 +1,8 @@
 import {
+  CONVERTED_NOTE_SIZE,
   LIMITS,
+  cardToNoteText,
+  noteToCardFields,
   positionBetween,
   type BoardData,
   type Card,
@@ -8,10 +11,13 @@ import {
   type Column,
   type ColumnPatch,
   type CommittedOp,
+  type Note,
+  type NotePatch,
   type Op,
 } from "@livekanban/protocol";
 
-export const SCHEMA_VERSION = 2;
+/** 2: columns, cards, ops_log. 3: notes. */
+export const SCHEMA_VERSION = 3;
 /** ops_log keeps this many recent ops for reconnect replay. */
 export const OPS_KEPT = 1000;
 
@@ -36,6 +42,20 @@ interface CardRow extends Row {
   labels: string;
   assignee: string;
   due_date: string | null;
+  updated_at: number;
+  updated_by: string;
+  deleted_at: number | null;
+}
+
+interface NoteRow extends Row {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
+  color: string;
+  text: string;
   updated_at: number;
   updated_by: string;
   deleted_at: number | null;
@@ -66,6 +86,19 @@ const toCard = (r: CardRow): Card => ({
   labels: JSON.parse(r.labels) as string[],
   assignee: r.assignee,
   dueDate: r.due_date,
+  updatedAt: r.updated_at,
+  updatedBy: r.updated_by,
+});
+
+const toNote = (r: NoteRow): Note => ({
+  id: r.id,
+  x: r.x,
+  y: r.y,
+  w: r.w,
+  h: r.h,
+  z: r.z,
+  color: r.color as Color,
+  text: r.text,
   updatedAt: r.updated_at,
   updatedBy: r.updated_by,
 });
@@ -127,6 +160,19 @@ export class BoardStorage {
           deleted_at INTEGER
         );
         CREATE INDEX IF NOT EXISTS cards_by_column ON cards (column_id, position);
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          x INTEGER NOT NULL,
+          y INTEGER NOT NULL,
+          w INTEGER NOT NULL,
+          h INTEGER NOT NULL,
+          z INTEGER NOT NULL,
+          color TEXT NOT NULL,
+          text TEXT NOT NULL DEFAULT '',
+          updated_at INTEGER NOT NULL,
+          updated_by TEXT NOT NULL,
+          deleted_at INTEGER
+        );
         CREATE TABLE IF NOT EXISTS ops_log (
           seq INTEGER PRIMARY KEY AUTOINCREMENT,
           op TEXT NOT NULL,
@@ -171,7 +217,15 @@ export class BoardStorage {
     )) {
       cards[r.id] = toCard(r);
     }
-    return { title: this.getMeta("title") ?? "Untitled board", columns, cards };
+    const notes: Record<string, Note> = {};
+    for (const r of this.sql.exec<NoteRow>("SELECT * FROM notes WHERE deleted_at IS NULL")) notes[r.id] = toNote(r);
+    return {
+      title: this.getMeta("title") ?? "Untitled board",
+      columns,
+      cards,
+      notes,
+      pinnedNoteId: this.getMeta("pinned_note_id") || null,
+    };
   }
 
   currentSeq(): number {
@@ -200,6 +254,42 @@ export class BoardStorage {
 
   private cardRow(id: string): CardRow | undefined {
     return this.sql.exec<CardRow>("SELECT * FROM cards WHERE id = ?", id).toArray()[0];
+  }
+
+  private noteRow(id: string): NoteRow | undefined {
+    return this.sql.exec<NoteRow>("SELECT * FROM notes WHERE id = ?", id).toArray()[0];
+  }
+
+  private liveNote(id: string): NoteRow {
+    const row = this.noteRow(id);
+    return row && row.deleted_at === null ? row : reject("Note not found");
+  }
+
+  /** Next stacking position: above every live note. */
+  private topZ(): number {
+    return this.sql.exec<{ z: number }>("SELECT COALESCE(MAX(z), 0) + 1 AS z FROM notes WHERE deleted_at IS NULL").one().z;
+  }
+
+  private checkNoteLimit() {
+    if (this.count("SELECT COUNT(*) AS n FROM notes WHERE deleted_at IS NULL") >= LIMITS.notes) {
+      reject(`A board can have at most ${LIMITS.notes} notes`);
+    }
+  }
+
+  private insertNote(n: Note) {
+    this.sql.exec(
+      "INSERT INTO notes (id, x, y, w, h, z, color, text, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      n.id,
+      n.x,
+      n.y,
+      n.w,
+      n.h,
+      n.z,
+      n.color,
+      n.text,
+      n.updatedAt,
+      n.updatedBy,
+    );
   }
 
   private liveColumn(id: string): ColumnRow {
@@ -360,7 +450,98 @@ export class BoardStorage {
         this.sql.exec("UPDATE cards SET deleted_at = NULL, position = ? WHERE id = ?", position, op.id);
         return { kind: "card.restore", id: op.id, card: toCard({ ...row!, position, deleted_at: null }) };
       }
+
+      case "note.create": {
+        if (this.noteRow(op.id)) reject("Note already exists");
+        this.checkNoteLimit();
+        const z = this.topZ();
+        this.insertNote({ ...op, z, updatedAt: now, updatedBy: actor });
+        return { ...op, z };
+      }
+
+      case "note.update":
+        this.liveNote(op.id);
+        this.updateNote(op.id, op.patch, actor, now);
+        return op;
+
+      case "note.move": {
+        this.liveNote(op.id);
+        const z = this.topZ();
+        this.sql.exec("UPDATE notes SET x = ?, y = ?, z = ? WHERE id = ?", op.x, op.y, z, op.id);
+        return { ...op, z };
+      }
+
+      case "note.delete":
+        this.liveNote(op.id);
+        this.sql.exec("UPDATE notes SET deleted_at = ? WHERE id = ?", now, op.id);
+        return op;
+
+      case "note.restore": {
+        const row = this.noteRow(op.id);
+        if (!row || row.deleted_at === null) reject("Nothing to restore");
+        this.checkNoteLimit();
+        this.sql.exec("UPDATE notes SET deleted_at = NULL WHERE id = ?", op.id);
+        return { kind: "note.restore", id: op.id, note: toNote({ ...row!, deleted_at: null }) };
+      }
+
+      case "board.pin":
+        if (op.noteId) this.liveNote(op.noteId);
+        this.setMeta("pinned_note_id", op.noteId ?? "");
+        return op;
+
+      case "note.toCard": {
+        const note = this.liveNote(op.id);
+        if (this.cardRow(op.cardId)) reject("Card already exists");
+        this.liveColumn(op.columnId);
+        this.checkCardLimit();
+        const position = this.freePosition("cards", op.position, op.cardId, op.columnId);
+        const { title, description } = noteToCardFields(note.text);
+        this.sql.exec("UPDATE notes SET deleted_at = ? WHERE id = ?", now, op.id);
+        this.sql.exec(
+          `INSERT INTO cards (id, column_id, position, title, description, color, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          op.cardId,
+          op.columnId,
+          position,
+          title,
+          description,
+          note.color,
+          now,
+          actor,
+        );
+        return { ...op, position };
+      }
+
+      case "card.toNote": {
+        const card = toCard(this.liveCard(op.id));
+        if (this.noteRow(op.noteId)) reject("Note already exists");
+        this.checkNoteLimit();
+        const z = this.topZ();
+        this.sql.exec("UPDATE cards SET deleted_at = ? WHERE id = ?", now, op.id);
+        this.insertNote({
+          id: op.noteId,
+          x: op.x,
+          y: op.y,
+          ...CONVERTED_NOTE_SIZE,
+          z,
+          color: card.color ?? "amber",
+          text: cardToNoteText(card),
+          updatedAt: now,
+          updatedBy: actor,
+        });
+        return { ...op, z };
+      }
     }
+  }
+
+  private updateNote(id: string, patch: NotePatch, actor: string, now: number) {
+    const sets = ["updated_at = ?", "updated_by = ?"];
+    const args: SqlStorageValue[] = [now, actor];
+    if (patch.text !== undefined) sets.push("text = ?"), args.push(patch.text);
+    if (patch.color !== undefined) sets.push("color = ?"), args.push(patch.color);
+    if (patch.w !== undefined) sets.push("w = ?"), args.push(patch.w);
+    if (patch.h !== undefined) sets.push("h = ?"), args.push(patch.h);
+    this.sql.exec(`UPDATE notes SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
   }
 
   private checkCardLimit() {

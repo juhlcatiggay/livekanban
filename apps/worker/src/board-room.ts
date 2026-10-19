@@ -6,6 +6,7 @@ import {
   MAX_MESSAGE_LENGTH,
   encode,
   parseClientMessage,
+  type OpKind,
   type Peer,
   type ServerMessage,
   type Sync,
@@ -15,6 +16,8 @@ import { BoardStorage } from "./storage";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A drag lock lapses if its holder hasn't moved the pointer for this long. */
 const LOCK_STALE_MS = 15_000;
+/** Ops that a drag lock blocks for everyone but the holder. */
+const HELD_KINDS = new Set<OpKind>(["card.move", "card.delete", "card.toNote", "note.move", "note.delete", "note.toCard"]);
 
 /**
  * One Durable Object per board. Presence lives in each socket's attachment
@@ -177,16 +180,19 @@ export class BoardRoom extends Server<Env> {
         const peer = conn.state;
         if (!peer) return this.send(conn, { t: "reject", cid: msg.cid, reason: "Say hello first" });
         const op = msg.op;
-        if (op.kind === "card.move" || op.kind === "card.delete") {
+        // Someone holding a card or note blocks others from moving, deleting or converting it.
+        if (HELD_KINDS.has(op.kind) && "id" in op) {
           const holder = this.holderOf(op.id, conn.id);
-          if (holder) return this.send(conn, { t: "reject", cid: msg.cid, reason: `${holder.state!.name} is moving this card` });
+          if (holder) return this.send(conn, { t: "reject", cid: msg.cid, reason: `${holder.state!.name} is moving this` });
         }
         const result = this.store.commit(op, peer.name, Date.now());
         if (!result.ok) return this.send(conn, { t: "reject", cid: msg.cid, reason: result.reason });
         this.send(conn, { t: "ack", cid: msg.cid, op: result.committed });
         this.broadcast(encode({ t: "opb", op: result.committed }), [conn.id]);
-        // Dropping a held card commits the move and releases the lock in one step.
-        if (op.kind === "card.move" && peer.holding === op.id) this.updatePeer(conn, { holding: null });
+        // Dropping a held card or note commits the move and releases the lock in one step.
+        if ((op.kind === "card.move" || op.kind === "note.move") && peer.holding === op.id) {
+          this.updatePeer(conn, { holding: null });
+        }
         return;
       }
 
