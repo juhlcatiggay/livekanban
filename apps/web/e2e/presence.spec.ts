@@ -23,7 +23,7 @@ test("two visitors on one board see each other join and leave", async ({ browser
 
 test("a board you create appears under My own boards", async ({ page }) => {
   await page.goto("/new");
-  await page.getByLabel("Name", { exact: true }).fill("Roadmap");
+  await page.getByLabel("Board name").fill("Roadmap");
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL(/\/b\//);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();

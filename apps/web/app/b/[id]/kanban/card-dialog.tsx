@@ -106,7 +106,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
     onClose();
   };
 
-  const field = "w-full rounded-md border border-stone-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-stone-700";
+  const field = "field w-full px-2.5 py-1.5 text-sm";
 
   return (
     <dialog
@@ -114,7 +114,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
       onClose={close}
       onClick={(e) => e.target === ref.current && ref.current.close()}
       aria-label={`Card ${card.title}`}
-      className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-xl bg-white p-0 text-stone-900 shadow-2xl backdrop:bg-black/40 dark:bg-stone-900 dark:text-stone-100"
+      className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-[20px] bg-white p-0 text-gray-900 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.45)] dark:bg-gray-900 dark:text-gray-100"
     >
       <div className="flex flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-4">
@@ -127,13 +127,13 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
               draft("title", e.target.value);
               if (e.target.value.trim()) queue({ title: e.target.value });
             }}
-            className="w-full rounded-md bg-transparent px-1 text-lg font-semibold outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full rounded-md bg-transparent px-1 text-lg font-semibold outline-none focus:ring-2 focus:ring-accent-500"
           />
-          <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="rounded px-2 text-xl leading-none text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800">
+          <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-base leading-none text-gray-500 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15">
             ×
           </button>
         </div>
-        <p className="-mt-3 px-1 text-xs text-stone-500">
+        <p className="-mt-3 px-1 text-xs text-gray-500">
           {card.number > 0 && <span className="mr-1.5 font-medium tabular-nums">#{card.number}</span>}
           in {columnTitle}
           {readOnly && <span className="ml-2">· view only</span>}
@@ -153,8 +153,8 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
                 onClick={() => setEditingDescription((e) => !e)}
                 className={`rounded-md px-2.5 py-0.5 text-xs font-medium ${
                   editingDescription
-                    ? "bg-teal-600 text-white hover:bg-teal-700"
-                    : "border border-stone-300 text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+                    ? "bg-accent-600 text-white hover:bg-accent-700"
+                    : "bg-black/5 text-gray-800 hover:bg-black/10 dark:bg-white/10 dark:text-gray-100 dark:hover:bg-white/15"
                 }`}
               >
                 {editingDescription ? "Done" : description ? "Edit" : "Add description"}
@@ -181,9 +181,9 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
               aria-label="Description preview"
               title={readOnly ? undefined : "Double-click to edit"}
               onDoubleClick={() => !readOnly && setEditingDescription(true)}
-              className="max-h-[50vh] min-h-24 overflow-y-auto rounded-md border border-stone-200 px-4 py-3 dark:border-stone-700"
+              className="max-h-[50vh] min-h-24 overflow-y-auto rounded-md border border-gray-200 px-4 py-3 dark:border-gray-700"
             >
-              {description ? <Markdown text={description} /> : <p className="text-sm text-stone-400">No description yet.</p>}
+              {description ? <Markdown text={description} /> : <p className="text-sm text-gray-400">No description yet.</p>}
             </div>
           )}
         </div>
@@ -263,7 +263,7 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
         <fieldset className="flex flex-col gap-1.5" disabled={readOnly}>
           <legend className="text-sm font-medium">Color</legend>
           <div className="flex flex-wrap gap-2">
-            <ColorSwatch label="None" selected={card.color === null} onClick={() => queue({ color: null })} className="bg-white ring-1 ring-stone-300 dark:bg-stone-800" />
+            <ColorSwatch label="None" selected={card.color === null} onClick={() => queue({ color: null })} className="bg-white ring-1 ring-gray-300 dark:bg-gray-800" />
             {COLORS.map((c) => (
               <ColorSwatch
                 key={c}
@@ -276,12 +276,12 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
           </div>
         </fieldset>
 
-        <details onToggle={(e) => setShowActivity(e.currentTarget.open)} className="border-t border-stone-200 pt-3 dark:border-stone-800">
+        <details onToggle={(e) => setShowActivity(e.currentTarget.open)} className="border-t border-gray-200 pt-3 dark:border-gray-800">
           <summary className="cursor-pointer text-sm font-medium">Activity</summary>
           <div className="mt-2 max-h-60 overflow-y-auto">{showActivity && <CardActivity cardId={card.id} />}</div>
         </details>
 
-        <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-xs text-stone-500 dark:border-stone-800">
+        <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-xs text-gray-500 dark:border-gray-800">
           <span>
             Last edited by {card.updatedBy} · {editedFormat.format(card.updatedAt)}
           </span>
@@ -313,7 +313,7 @@ function ColorSwatch({ label, selected, onClick, className }: { label: string; s
       aria-pressed={selected}
       title={label}
       onClick={onClick}
-      className={`h-7 w-7 rounded-full ${className} ${selected ? "ring-2 ring-teal-600 ring-offset-2 dark:ring-offset-stone-900" : ""}`}
+      className={`h-7 w-7 rounded-full ${className} ${selected ? "ring-2 ring-accent-600 ring-offset-2 dark:ring-offset-gray-900" : ""}`}
     />
   );
 }

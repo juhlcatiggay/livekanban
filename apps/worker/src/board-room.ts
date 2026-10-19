@@ -372,6 +372,11 @@ export class BoardRoom extends Server<Env> {
     switch (msg.t) {
       case "hello": {
         if (conn.state || this.checkingPassword.has(conn.id)) return;
+        // A socket opened just before the board was deleted can still say hello afterwards.
+        if (!this.isInitialized()) {
+          this.send(conn, { t: "expired" });
+          return conn.close(CloseCode.Expired, "Board expired");
+        }
         const record = this.store.passwordRecord();
         // The host never needs the password; everyone else does when one is set.
         if (!record || this.store.isHostKey(msg.hostKey)) return this.welcome(conn, msg);

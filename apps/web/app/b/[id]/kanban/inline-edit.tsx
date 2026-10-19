@@ -33,7 +33,7 @@ export function InlineEdit({ value, onCommit, label, className = "", onEditingCh
           setEditing(true);
           onEditingChange?.(true);
         }}
-        className={`min-w-0 truncate rounded px-1 text-left hover:bg-stone-200/60 dark:hover:bg-stone-800 ${className}`}
+        className={`min-w-0 truncate rounded px-1 text-left hover:bg-gray-200/60 dark:hover:bg-gray-800 ${className}`}
         aria-label={`Rename ${label}: ${value}`}
       >
         {value}
@@ -62,7 +62,7 @@ export function InlineEdit({ value, onCommit, label, className = "", onEditingCh
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className={`min-w-0 rounded border border-teal-500 bg-white px-1 outline-none dark:bg-stone-900 ${className}`}
+      className={`min-w-0 rounded border border-accent-500 bg-white px-1 outline-none dark:bg-gray-900 ${className}`}
     />
   );
 }

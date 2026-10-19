@@ -11,12 +11,12 @@ export function ChecklistProgress({ card, className = "" }: { card: Pick<Card, "
   const complete = done === total;
   return (
     <div className={`flex items-center gap-2 text-xs ${className}`} aria-label={`Checklist: ${done} of ${total} done`} role="img">
-      <span className={`shrink-0 tabular-nums ${complete ? "font-medium text-green-700 dark:text-green-400" : "text-stone-500"}`}>
+      <span className={`shrink-0 tabular-nums ${complete ? "font-medium text-green-700 dark:text-green-400" : "text-gray-500"}`}>
         ☑ {done}/{total}
       </span>
-      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
         <span
-          className={`block h-full rounded-full transition-[width] ${complete ? "bg-green-500" : "bg-teal-500"}`}
+          className={`block h-full rounded-full transition-[width] ${complete ? "bg-green-500" : "bg-accent-500"}`}
           style={{ width: `${(done / total) * 100}%` }}
         />
       </span>
@@ -54,11 +54,11 @@ export function ChecklistEditor({ card, readOnly = false }: { card: Card; readOn
   return (
     <div className="flex flex-col gap-2">
       {total > 0 && (
-        <div className="flex items-center gap-2 text-xs text-stone-500">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
           <span className="tabular-nums">{Math.round((done / total) * 100)}%</span>
-          <span className="h-2 flex-1 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
+          <span className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <span
-              className={`block h-full rounded-full transition-[width] ${done === total ? "bg-green-500" : "bg-teal-500"}`}
+              className={`block h-full rounded-full transition-[width] ${done === total ? "bg-green-500" : "bg-accent-500"}`}
               style={{ width: `${(done / total) * 100}%` }}
             />
           </span>
@@ -69,14 +69,14 @@ export function ChecklistEditor({ card, readOnly = false }: { card: Card; readOn
       )}
       <ul className="flex flex-col" aria-label="Checklist items">
         {card.checklist.map((item) => (
-          <li key={item.id} className="group flex items-start gap-2 rounded px-1 py-1 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+          <li key={item.id} className="group flex items-start gap-2 rounded px-1 py-1 hover:bg-gray-50 dark:hover:bg-gray-800/50">
             <input
               type="checkbox"
               checked={item.done}
               disabled={readOnly}
               aria-label={item.text}
               onChange={(e) => dispatch({ kind: "checklist.update", id: card.id, itemId: item.id, patch: { done: e.target.checked } })}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-teal-600"
+              className="mt-0.5 h-4 w-4 shrink-0"
             />
             {editing?.id === item.id ? (
               <input
@@ -94,11 +94,11 @@ export function ChecklistEditor({ card, readOnly = false }: { card: Card; readOn
                     setEditing(null);
                   }
                 }}
-                className="min-w-0 flex-1 rounded border border-stone-300 bg-transparent px-1.5 text-sm outline-none focus:border-teal-500 dark:border-stone-700"
+                className="field min-w-0 flex-1 rounded px-1.5 text-sm"
               />
             ) : (
               <span
-                className={`min-w-0 flex-1 break-words text-sm ${item.done ? "text-stone-400 line-through" : ""} ${readOnly ? "" : "cursor-text"}`}
+                className={`min-w-0 flex-1 break-words text-sm ${item.done ? "text-gray-400 line-through" : ""} ${readOnly ? "" : "cursor-text"}`}
                 onClick={() => !readOnly && setEditing({ id: item.id, text: item.text })}
               >
                 {item.text}
@@ -109,7 +109,7 @@ export function ChecklistEditor({ card, readOnly = false }: { card: Card; readOn
                 type="button"
                 aria-label={`Delete checklist item ${item.text}`}
                 onClick={() => dispatch({ kind: "checklist.delete", id: card.id, itemId: item.id })}
-                className="shrink-0 px-1 text-stone-400 opacity-0 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+                className="shrink-0 px-1 text-gray-400 opacity-0 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
               >
                 ×
               </button>
@@ -130,10 +130,10 @@ export function ChecklistEditor({ card, readOnly = false }: { card: Card; readOn
               add();
             }
           }}
-          className="w-full rounded-md border border-dashed border-stone-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-teal-500 focus:border-solid dark:border-stone-700"
+          className="field w-full rounded-md px-2 py-1.5 text-sm"
         />
       )}
-      {readOnly && total === 0 && <p className="text-sm text-stone-400">No checklist.</p>}
+      {readOnly && total === 0 && <p className="text-sm text-gray-400">No checklist.</p>}
     </div>
   );
 }

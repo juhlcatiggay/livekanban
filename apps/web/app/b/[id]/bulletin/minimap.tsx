@@ -60,7 +60,7 @@ export function Minimap({ notes, scroller, zoom }: MinimapProps) {
       <button
         type="button"
         onClick={() => setHidden(false)}
-        className="absolute right-3 top-3 z-20 rounded-md border border-stone-300 bg-white/90 px-2 py-1 text-xs shadow dark:border-stone-700 dark:bg-stone-900/90"
+        className="absolute right-3 top-3 z-20 material rounded-full border border-black/10 px-3 py-1 text-xs font-medium shadow-sm dark:border-white/10"
       >
         Show map
       </button>
@@ -71,10 +71,10 @@ export function Minimap({ notes, scroller, zoom }: MinimapProps) {
   const frame = { left: (left / zoom) * SCALE, top: (top / zoom) * SCALE, width: (width / zoom) * SCALE, height: (height / zoom) * SCALE };
 
   return (
-    <div className="absolute right-3 top-3 z-20 rounded-lg border border-stone-300 bg-white/90 p-1.5 shadow-md backdrop-blur dark:border-stone-700 dark:bg-stone-900/90">
-      <div className="mb-1 flex items-center justify-between px-0.5 text-[11px] text-stone-500">
+    <div className="absolute right-3 top-3 z-20 material rounded-xl border border-black/10 p-1.5 shadow-[0_8px_30px_-8px_rgb(0_0_0/0.25)] dark:border-white/10">
+      <div className="mb-1 flex items-center justify-between px-0.5 text-[11px] text-gray-500">
         <span>Map</span>
-        <button type="button" onClick={() => setHidden(true)} className="hover:text-stone-800 dark:hover:text-stone-200">
+        <button type="button" onClick={() => setHidden(true)} className="hover:text-gray-800 dark:hover:text-gray-200">
           Hide
         </button>
       </div>
@@ -82,7 +82,7 @@ export function Minimap({ notes, scroller, zoom }: MinimapProps) {
         type="button"
         aria-label="Bulletin minimap: click or use arrow keys to move the view"
         data-minimap
-        className="relative block cursor-crosshair touch-none overflow-hidden rounded bg-stone-100 outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:bg-stone-800"
+        className="relative block cursor-crosshair touch-none overflow-hidden rounded bg-gray-100 outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:bg-gray-800"
         style={{ width: WIDTH, height: HEIGHT }}
         onPointerDown={(e: React.PointerEvent<HTMLElement>) => {
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -108,7 +108,7 @@ export function Minimap({ notes, scroller, zoom }: MinimapProps) {
         ))}
         <span
           data-minimap-view
-          className="pointer-events-none absolute rounded-sm border-2 border-teal-600 bg-teal-500/10"
+          className="pointer-events-none absolute rounded-sm border-2 border-accent-600 bg-accent-500/10"
           style={{ ...frame, width: Math.min(frame.width, WIDTH), height: Math.min(frame.height, HEIGHT) }}
         />
       </button>

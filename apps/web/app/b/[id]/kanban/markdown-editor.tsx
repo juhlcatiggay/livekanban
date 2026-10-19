@@ -256,8 +256,8 @@ export function MarkdownEditor({
         aria-label="Formatting"
         className={
           toolbar === "floating"
-            ? "absolute bottom-full left-0 z-20 mb-1 flex w-max max-w-[min(32rem,90vw)] flex-wrap gap-0.5 rounded-md border border-stone-200 bg-white p-0.5 text-stone-700 shadow-md dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
-            : "mb-1 flex flex-wrap gap-0.5 rounded-md border border-stone-200 bg-stone-50 p-0.5 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
+            ? "absolute bottom-full left-0 z-20 mb-1 flex w-max max-w-[min(32rem,90vw)] flex-wrap gap-0.5 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-0.5 text-gray-700 shadow-md dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            : "mb-1 flex flex-wrap gap-0.5 rounded-md border border-gray-200 bg-gray-50 p-0.5 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
         }
       >
         {TOOLS.map((t) => (
@@ -269,7 +269,7 @@ export function MarkdownEditor({
             // Keep focus (and the selection) in the text.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => run(t.id)}
-            className="flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
+            className="flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
           >
             {t.icon}
           </button>
@@ -298,11 +298,11 @@ export function MarkdownEditor({
         <ul
           role="listbox"
           aria-label="Mention a card or note"
-          className="absolute z-30 max-h-60 w-72 overflow-y-auto rounded-md border border-stone-200 bg-white py-1 text-sm text-stone-800 shadow-lg dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+          className="absolute z-30 max-h-60 w-72 overflow-y-auto rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 py-1 text-sm text-gray-800 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90 dark:text-gray-100"
           style={{ left: picker.left, top: picker.top }}
         >
           {matches.length === 0 ? (
-            <li className="px-3 py-1.5 text-stone-500">No card or note matches “{picker.query}”. Keep typing; it stays plain text.</li>
+            <li className="px-3 py-1.5 text-gray-500">No card or note matches “{picker.query}”. Keep typing; it stays plain text.</li>
           ) : (
             matches.map((m, i) => (
               <li
@@ -311,9 +311,9 @@ export function MarkdownEditor({
                 aria-selected={i === picker.active}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(m.number)}
-                className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 ${i === picker.active ? "bg-teal-50 dark:bg-teal-950" : ""}`}
+                className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 ${i === picker.active ? "bg-accent-50 dark:bg-accent-950" : ""}`}
               >
-                <span aria-hidden className="text-stone-400">
+                <span aria-hidden className="text-gray-400">
                   {m.kind === "card" ? "▤" : "✎"}
                 </span>
                 <span className="font-medium tabular-nums">#{m.number}</span>
@@ -340,7 +340,7 @@ export function MarkdownEditor({
               ref.current?.focus();
             }
           }}
-          className="absolute left-0 top-9 z-30 flex w-80 max-w-full flex-col gap-2 rounded-md border border-stone-200 bg-white p-3 text-sm text-stone-800 shadow-lg dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+          className="absolute left-0 top-9 z-30 flex w-80 max-w-full flex-col gap-2 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-3 text-sm text-gray-800 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90 dark:text-gray-100"
         >
           <label className="flex flex-col gap-1 font-medium">
             {popover.kind === "image" ? "Image address (URL)" : "Link address (URL)"}
@@ -351,7 +351,7 @@ export function MarkdownEditor({
               placeholder="https://"
               value={popover.url}
               onChange={(e) => setPopover({ ...popover, url: e.target.value })}
-              className="rounded border border-stone-300 bg-transparent px-2 py-1 font-normal outline-none focus:border-teal-500 dark:border-stone-700"
+              className="field rounded px-2 py-1 font-normal"
             />
           </label>
           <label className="flex flex-col gap-1 font-medium">
@@ -359,11 +359,11 @@ export function MarkdownEditor({
             <input
               value={popover.text}
               onChange={(e) => setPopover({ ...popover, text: e.target.value })}
-              className="rounded border border-stone-300 bg-transparent px-2 py-1 font-normal outline-none focus:border-teal-500 dark:border-stone-700"
+              className="field rounded px-2 py-1 font-normal"
             />
           </label>
           {popover.kind === "image" && (
-            <p className="text-xs text-stone-500">Paste the address of an image that&apos;s already online, e.g. from Imgur or your own site.</p>
+            <p className="text-xs text-gray-500">Paste the address of an image that&apos;s already online, e.g. from Imgur or your own site.</p>
           )}
           <div className="flex justify-end gap-2">
             <button
@@ -372,11 +372,11 @@ export function MarkdownEditor({
                 setPopover(null);
                 ref.current?.focus();
               }}
-              className="rounded px-2 py-1 hover:bg-stone-100 dark:hover:bg-stone-800"
+              className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               Cancel
             </button>
-            <button type="submit" className="rounded bg-teal-600 px-3 py-1 font-medium text-white hover:bg-teal-700">
+            <button type="submit" className="rounded bg-accent-600 px-3 py-1 font-medium text-white hover:bg-accent-700">
               Insert
             </button>
           </div>

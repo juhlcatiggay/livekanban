@@ -21,5 +21,5 @@ export default function BoardPage({ params }: PageProps<"/b/[id]">) {
 }
 
 function BoardSkeleton() {
-  return <div className="flex flex-1 items-center justify-center text-stone-500">Loading board…</div>;
+  return <div className="flex flex-1 items-center justify-center text-gray-500">Loading board…</div>;
 }

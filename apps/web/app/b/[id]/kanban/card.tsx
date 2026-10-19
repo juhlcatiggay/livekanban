@@ -26,19 +26,19 @@ export function CardFace({ card, lifted = false, selected = false }: { card: Car
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border bg-white text-sm shadow-sm dark:bg-stone-900 ${
-        selected ? "border-teal-500 ring-2 ring-teal-500/60" : "border-stone-200 dark:border-stone-700"
-      } ${lifted ? "rotate-2 shadow-lg ring-2 ring-teal-500" : ""}`}
+      className={`relative overflow-hidden rounded-xl bg-white text-[13px] shadow-[0_1px_2px_rgb(0_0_0/0.07),0_0_0_0.5px_rgb(0_0_0/0.07)] transition-shadow hover:shadow-[0_6px_16px_-6px_rgb(0_0_0/0.18),0_0_0_0.5px_rgb(0_0_0/0.07)] dark:bg-gray-800 dark:shadow-[0_0_0_0.5px_rgb(255_255_255/0.08)] ${
+        selected ? "ring-2 ring-accent-500" : ""
+      } ${lifted ? "rotate-2 shadow-[0_20px_40px_-12px_rgb(0_0_0/0.35)] ring-1 ring-accent-500/50" : ""}`}
     >
       {card.color && <span className={`absolute inset-y-0 left-0 z-10 w-1.5 ${COLOR_STYLES[card.color].stripe}`} />}
       {cover && (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary user URLs can't go through next/image.
         <img src={cover.src} alt={cover.alt} referrerPolicy="no-referrer" loading="lazy" draggable={false} className="block max-h-40 w-full object-cover" />
       )}
-      <div className="p-3">
+      <div className="px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 break-words font-medium">{card.title}</p>
-          {card.number > 0 && <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">#{card.number}</span>}
+          <p className="min-w-0 break-words text-[13px] font-medium leading-snug">{card.title}</p>
+          {card.number > 0 && <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-gray-400">#{card.number}</span>}
         </div>
         {card.labels.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1" aria-label="Labels">
@@ -51,7 +51,7 @@ export function CardFace({ card, lifted = false, selected = false }: { card: Car
         )}
         <ChecklistProgress card={card} className="mt-2" />
         {(card.assignees.length > 0 || dates || card.description) && (
-          <div className="mt-2 flex items-center gap-3 text-xs text-stone-500">
+          <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
             <AssigneeAvatars names={card.assignees} />
             {dates && <span className={overdue ? "font-medium text-red-600 dark:text-red-400" : ""}>{dates}</span>}
             {card.description && <span aria-label="Has description">≡</span>}
@@ -95,7 +95,7 @@ export function SortableCard({ card, onOpen, heldBy, editors = [], canMove = tru
       <li
         ref={setNodeRef}
         data-anchor={card.id}
-        className="flex min-h-16 items-center justify-center rounded-lg border-2 border-dashed p-3 text-xs font-medium"
+        className="flex min-h-16 items-center justify-center rounded-xl border-2 border-dashed p-3 text-xs font-medium"
         style={{ borderColor: heldBy.color, color: heldBy.color }}
         aria-label={`${card.title}, held by ${heldBy.name}`}
       >
@@ -109,7 +109,7 @@ export function SortableCard({ card, onOpen, heldBy, editors = [], canMove = tru
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`cursor-grab touch-none rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-teal-500 active:cursor-grabbing ${
+      className={`cursor-grab touch-none rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent-500 active:cursor-grabbing ${
         isDragging ? "opacity-40" : ""
       }`}
       data-anchor={card.id}
@@ -129,7 +129,7 @@ export function SortableCard({ card, onOpen, heldBy, editors = [], canMove = tru
         if (e.key === "Enter" && !e.defaultPrevented) onOpen();
       }}
     >
-      <div className="relative rounded-lg" style={editor ? { boxShadow: `0 0 0 2px ${editor.color}` } : undefined}>
+      <div className="relative rounded-xl" style={editor ? { boxShadow: `0 0 0 2px ${editor.color}` } : undefined}>
         <CardFace card={card} selected={selected} />
         {editor && <EditingBadge peers={editors} />}
       </div>
@@ -143,7 +143,7 @@ export function EditingBadge({ peers, className = "-top-2.5 right-2" }: { peers:
   const label = peers.length > 1 ? `${first.name} +${peers.length - 1} editing` : `${first.name} is editing`;
   return (
     <span
-      className={`pointer-events-none absolute z-10 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium text-white shadow ${className}`}
+      className={`pointer-events-none absolute z-10 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-white shadow ${className}`}
       style={{ backgroundColor: first.color }}
     >
       {label}

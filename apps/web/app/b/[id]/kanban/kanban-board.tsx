@@ -462,13 +462,13 @@ export function KanbanBoard({ board }: { board: BoardData }) {
             <div className="relative">
               {dragCount > 1 && (
                 <>
-                  <div className="absolute inset-0 translate-x-2 translate-y-2 rotate-3 rounded-lg border border-stone-200 bg-white shadow dark:border-stone-700 dark:bg-stone-900" />
-                  <div className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2.5deg] rounded-lg border border-stone-200 bg-white shadow dark:border-stone-700 dark:bg-stone-900" />
+                  <div className="absolute inset-0 translate-x-2 translate-y-2 rotate-3 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 shadow dark:border-gray-700 dark:bg-gray-900" />
+                  <div className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2.5deg] rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 shadow dark:border-gray-700 dark:bg-gray-900" />
                 </>
               )}
               <CardFace card={activeCard} lifted />
               {dragCount > 1 && (
-                <span className="absolute -right-2 -top-2 z-10 rounded-full bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white shadow">{dragCount} cards</span>
+                <span className="absolute -right-2 -top-2 z-10 rounded-full bg-accent-600 px-2 py-0.5 text-xs font-semibold text-white shadow">{dragCount} cards</span>
               )}
             </div>
           )}
@@ -520,7 +520,7 @@ function SelectionBar({
     <div
       role="toolbar"
       aria-label="Selected cards"
-      className="fixed bottom-14 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm shadow-xl dark:border-stone-700 dark:bg-stone-900"
+      className="fixed bottom-14 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
     >
       <span className="whitespace-nowrap font-medium">
         {count} card{count === 1 ? "" : "s"} selected
@@ -530,7 +530,7 @@ function SelectionBar({
           aria-label="Move selected cards to column"
           value=""
           onChange={(e) => e.target.value && onMove(e.target.value)}
-          className="rounded-md border border-stone-300 bg-transparent px-2 py-1 dark:border-stone-700 dark:bg-stone-900"
+          className="field rounded-md px-2 py-1"
         >
           <option value="">Move to…</option>
           {columns.map((c) => (
@@ -545,10 +545,10 @@ function SelectionBar({
           Delete
         </button>
       )}
-      <button type="button" onClick={() => clearSelection()} className="rounded-md px-2 py-1 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800">
+      <button type="button" onClick={() => clearSelection()} className="rounded-md px-2 py-1 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
         Clear
       </button>
-      <span className="hidden whitespace-nowrap text-xs text-stone-400 lg:inline">Drag any selected card to move them all · Esc clears</span>
+      <span className="hidden whitespace-nowrap text-xs text-gray-400 lg:inline">Drag any selected card to move them all · Esc clears</span>
     </div>
   );
 }
@@ -564,7 +564,7 @@ function AddColumn({ lastPosition, full }: { lastPosition: string | null; full: 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-72 shrink-0 rounded-xl border-2 border-dashed border-stone-300 px-3 py-2.5 text-left text-sm text-stone-500 hover:border-stone-400 hover:text-stone-700 dark:border-stone-700 dark:hover:text-stone-300"
+        className="w-72 shrink-0 rounded-2xl bg-black/[0.04] px-4 py-3 text-left text-[13px] font-medium text-gray-600 hover:bg-black/[0.07] dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/10"
       >
         + Add column
       </button>
@@ -573,7 +573,7 @@ function AddColumn({ lastPosition, full }: { lastPosition: string | null; full: 
 
   return (
     <form
-      className="flex w-72 shrink-0 flex-col gap-2 rounded-xl bg-stone-100 p-2 dark:bg-stone-900/60"
+      className="flex w-72 shrink-0 flex-col gap-2 rounded-xl bg-gray-100 p-2 dark:bg-gray-900/60"
       onSubmit={(e) => {
         e.preventDefault();
         const t = title.trim();
@@ -591,13 +591,13 @@ function AddColumn({ lastPosition, full }: { lastPosition: string | null; full: 
         aria-label="New column title"
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-        className="rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-stone-700 dark:bg-stone-900"
+        className="field rounded-lg px-2 py-1.5 text-sm"
       />
       <div className="flex gap-2">
-        <button type="submit" className="rounded-md bg-teal-600 px-3 py-1 text-sm font-medium text-white hover:bg-teal-700">
+        <button type="submit" className="rounded-full bg-accent-600 px-3 py-1 text-sm font-medium text-white hover:bg-accent-700">
           Add column
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded-md px-3 py-1 text-sm text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800">
           Cancel
         </button>
       </div>

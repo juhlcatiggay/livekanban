@@ -28,12 +28,12 @@ export function PasswordGate() {
           e.preventDefault();
           if (password.length >= PASSWORD.min && !waitMs) submitPassword(password);
         }}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-stone-900"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
       >
         <div>
           <p aria-hidden className="text-3xl">🔒</p>
           <h1 className="mt-2 text-xl font-semibold">This board has a password</h1>
-          <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">Ask the person who shared the link for it. This browser remembers it once it works.</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Ask the person who shared the link for it. This browser remembers it once it works.</p>
         </div>
         <label className="flex flex-col gap-1 text-sm font-medium">
           Password
@@ -46,9 +46,9 @@ export function PasswordGate() {
               maxLength={PASSWORD.max}
               onChange={(e) => setPassword(e.target.value)}
               aria-invalid={prompt?.wrong || undefined}
-              className="min-w-0 flex-1 rounded-md border border-stone-300 bg-transparent px-3 py-2 font-normal outline-none focus:border-teal-500 dark:border-stone-700"
+              className="field min-w-0 flex-1 rounded-md px-3 py-2 font-normal"
             />
-            <button type="button" onClick={() => setShown((s) => !s)} className="rounded-md border border-stone-300 px-2 text-xs dark:border-stone-700">
+            <button type="button" onClick={() => setShown((s) => !s)} className="rounded-full bg-black/5 px-3 text-xs font-medium hover:bg-black/10 dark:bg-white/10">
               {shown ? "Hide" : "Show"}
             </button>
           </span>
@@ -66,11 +66,11 @@ export function PasswordGate() {
         <button
           type="submit"
           disabled={password.length < PASSWORD.min || waitMs > 0}
-          className="rounded-lg bg-teal-600 px-4 py-2 font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+          className="rounded-full bg-accent-600 px-4 py-2 font-semibold text-white hover:bg-accent-700 disabled:opacity-50"
         >
           Open board
         </button>
-        <Link href="/" className="text-center text-sm text-stone-500 hover:underline">
+        <Link href="/" className="text-center text-sm text-gray-500 hover:underline">
           Back to LiveKanban
         </Link>
       </form>

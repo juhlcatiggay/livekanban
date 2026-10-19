@@ -44,9 +44,9 @@ export function FilterBar({ board }: { board: BoardData }) {
   const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 px-4 py-2 text-sm dark:border-stone-800" role="search">
+    <div className="flex flex-wrap items-center gap-2 px-4 pb-1 pt-3 text-[13px]" role="search">
       <div className="relative">
-        <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-stone-400">
+        <span aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500">
           ⌕
         </span>
         <input
@@ -57,38 +57,38 @@ export function FilterBar({ board }: { board: BoardData }) {
           value={filter.query}
           onChange={(e) => setCardFilter({ query: e.target.value })}
           onKeyDown={(e) => e.key === "Escape" && (filter.query ? setCardFilter({ query: "" }) : input.current?.blur())}
-          className="w-64 rounded-md border border-stone-300 bg-transparent py-1 pl-7 pr-2 outline-none focus:border-teal-500 dark:border-stone-700"
+          className="field w-64 py-1 pl-7 pr-2"
         />
       </div>
 
       <details ref={menu} className="relative">
         <summary
-          className={`cursor-pointer list-none rounded-md border px-2.5 py-1 ${
-            extra ? "border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200" : "border-stone-300 hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+          className={`cursor-pointer list-none rounded-full border px-3 py-1 font-medium ${
+            extra ? "border-accent-500 bg-accent-50 text-accent-800 dark:bg-accent-950 dark:text-accent-200" : "border-transparent bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
           }`}
         >
           Filters{extra ? ` (${extra})` : ""} ▾
         </summary>
-        <div className="absolute left-0 z-40 mt-1 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-lg border border-stone-200 bg-white p-3 shadow-lg dark:border-stone-700 dark:bg-stone-900">
+        <div className="origin-top-left absolute left-0 z-40 mt-2 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-3 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90">
           <fieldset>
-            <legend className="mb-1 font-medium">Due date</legend>
+            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Due date</legend>
             {DUE_OPTIONS.map((o) => (
               <label key={o.value} className="flex items-center gap-2 py-0.5">
-                <input type="radio" name="due-filter" checked={filter.due === o.value} onChange={() => setCardFilter({ due: o.value })} className="accent-teal-600" />
+                <input type="radio" name="due-filter" checked={filter.due === o.value} onChange={() => setCardFilter({ due: o.value })} className="" />
                 {o.label}
               </label>
             ))}
           </fieldset>
           <fieldset>
-            <legend className="mb-1 font-medium">Labels</legend>
-            {labels.length === 0 && <p className="text-stone-500">No labels yet.</p>}
+            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Labels</legend>
+            {labels.length === 0 && <p className="text-gray-500">No labels yet.</p>}
             {labels.map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 py-0.5">
                 <input
                   type="checkbox"
                   checked={filter.labels.includes(key)}
                   onChange={() => setCardFilter({ labels: toggle(filter.labels, key) })}
-                  className="accent-teal-600"
+                  className=""
                   aria-label={`Label ${label}`}
                 />
                 <LabelChip label={label} labelColors={board.labelColors} />
@@ -96,11 +96,11 @@ export function FilterBar({ board }: { board: BoardData }) {
             ))}
           </fieldset>
           <fieldset>
-            <legend className="mb-1 font-medium">Assignees</legend>
-            {people.length === 0 && <p className="text-stone-500">Nobody is assigned yet.</p>}
+            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Assignees</legend>
+            {people.length === 0 && <p className="text-gray-500">Nobody is assigned yet.</p>}
             {people.map((name) => (
               <label key={name} className="flex items-center gap-2 py-0.5">
-                <input type="checkbox" checked={filter.assignees.includes(name)} onChange={() => setCardFilter({ assignees: toggle(filter.assignees, name) })} className="accent-teal-600" />
+                <input type="checkbox" checked={filter.assignees.includes(name)} onChange={() => setCardFilter({ assignees: toggle(filter.assignees, name) })} className="" />
                 {name}
               </label>
             ))}
@@ -110,10 +110,10 @@ export function FilterBar({ board }: { board: BoardData }) {
 
       {active && (
         <>
-          <span className="text-stone-500" role="status">
+          <span className="text-gray-500" role="status">
             {shown} of {cards.length} card{cards.length === 1 ? "" : "s"} match
           </span>
-          <button type="button" onClick={clearCardFilter} className="rounded-md px-2 py-1 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950">
+          <button type="button" onClick={clearCardFilter} className="rounded-md px-2 py-1 text-accent-700 hover:bg-accent-50 dark:text-accent-300 dark:hover:bg-accent-950">
             Clear
           </button>
         </>

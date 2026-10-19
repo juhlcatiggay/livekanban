@@ -21,11 +21,11 @@ import { clampToCanvas } from "./placement";
 
 /** Sticky-note paper colors; text stays dark so notes read the same in both themes. */
 export const PAPER: Record<Color, string> = {
-  gray: "bg-stone-100 border-stone-300",
+  gray: "bg-gray-100 border-gray-300",
   red: "bg-red-100 border-red-300",
   amber: "bg-amber-100 border-amber-300",
   green: "bg-green-100 border-green-300",
-  teal: "bg-teal-100 border-teal-300",
+  teal: "bg-cyan-100 border-cyan-300",
   blue: "bg-blue-100 border-blue-300",
   purple: "bg-purple-100 border-purple-300",
   pink: "bg-pink-100 border-pink-300",
@@ -43,13 +43,13 @@ const NUDGE = 20;
 export function NoteFace({ note, lifted = false, className = "" }: { note: Note; lifted?: boolean; className?: string }) {
   return (
     <div
-      className={`h-full w-full overflow-hidden break-words rounded-sm border p-3 text-sm text-stone-900 shadow ${PAPER[note.color]} ${
+      className={`h-full w-full overflow-hidden break-words rounded-sm border p-3 text-sm text-gray-900 shadow ${PAPER[note.color]} ${
         lifted ? "rotate-2 shadow-xl" : ""
       } ${className}`}
       style={lifted ? { width: note.w, height: note.h } : undefined}
     >
-      {note.number > 0 && <span className="float-right ml-2 text-[11px] tabular-nums text-stone-500">#{note.number}</span>}
-      {note.text ? <Markdown text={note.text} compact onPaper /> : <span className="text-stone-400">Empty note</span>}
+      {note.number > 0 && <span className="float-right ml-2 text-[11px] tabular-nums text-gray-500">#{note.number}</span>}
+      {note.text ? <Markdown text={note.text} compact onPaper /> : <span className="text-gray-400">Empty note</span>}
     </div>
   );
 }
@@ -166,7 +166,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
       role="group"
       aria-label={`Note: ${note.text.slice(0, 60) || "empty"}`}
       tabIndex={0}
-      className="group absolute touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+      className="group absolute touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
       style={{
         left: pos.x,
         top: pos.y,
@@ -227,13 +227,13 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
           {...textEditor.editorProps}
           toolbar="floating"
           wrapperClassName="h-full"
-          className={`h-full w-full resize-none rounded-sm border p-3 text-sm text-stone-900 shadow outline-none ${PAPER[note.color]}`}
+          className={`h-full w-full resize-none rounded-sm border p-3 text-sm text-gray-900 shadow outline-none ${PAPER[note.color]}`}
         />
       ) : (
         <NoteFace note={note} className={drag ? "rotate-1 shadow-xl" : ""} />
       )}
       {pinned && (
-        <span className="pointer-events-none absolute -top-2 left-2 rounded bg-stone-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+        <span className="pointer-events-none absolute -top-2 left-2 rounded bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
           Pinned
         </span>
       )}
@@ -286,7 +286,7 @@ export function NoteMenu({
 }) {
   const dispatch = useBoard((s) => s.dispatch);
   const menu = useDismiss();
-  const item = "w-full rounded px-2 py-1 text-left hover:bg-stone-100 dark:hover:bg-stone-800";
+  const item = "w-full rounded px-2 py-1 text-left hover:bg-gray-100 dark:hover:bg-gray-800";
   // Actions close the menu; recoloring keeps it open so colors can be compared.
   const act = (fn: () => void) => () => {
     closeMenu(menu);
@@ -295,10 +295,10 @@ export function NoteMenu({
 
   return (
     <details ref={menu} className="absolute right-1 top-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 open:opacity-100">
-      <summary className="cursor-pointer list-none rounded px-1.5 text-stone-600 hover:bg-black/10" aria-label="Note options">
+      <summary className="cursor-pointer list-none rounded px-1.5 text-gray-600 hover:bg-black/10" aria-label="Note options">
         ⋯
       </summary>
-      <div className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-stone-200 bg-white p-1.5 text-sm text-stone-900 shadow-lg dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100">
+      <div className="absolute right-0 z-10 mt-1 w-52 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-1.5 text-sm text-gray-900 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90 dark:text-gray-100">
         <button type="button" className={item} onClick={act(onEdit)}>
           Edit text
         </button>
@@ -313,13 +313,13 @@ export function NoteMenu({
               aria-label={`Note color ${COLOR_STYLES[c].label}`}
               aria-pressed={note.color === c}
               onClick={() => dispatch({ kind: "note.update", id: note.id, patch: { color: c } })}
-              className={`h-5 w-5 rounded-full ${COLOR_STYLES[c].swatch} ${note.color === c ? "ring-2 ring-stone-900 ring-offset-1 dark:ring-white" : ""}`}
+              className={`h-5 w-5 rounded-full ${COLOR_STYLES[c].swatch} ${note.color === c ? "ring-2 ring-gray-900 ring-offset-1 dark:ring-white" : ""}`}
             />
           ))}
         </div>
         {columns.length > 0 && (
-          <div className="border-t border-stone-200 pt-1 dark:border-stone-700">
-            <p className="px-2 py-1 text-xs text-stone-500">Convert to a card in</p>
+          <div className="border-t border-gray-200 pt-1 dark:border-gray-700">
+            <p className="px-2 py-1 text-xs text-gray-500">Convert to a card in</p>
             {columns.map((col) => (
               <button
                 key={col.id}
@@ -340,7 +340,7 @@ export function NoteMenu({
             ))}
           </div>
         )}
-        <button type="button" className={`${item} mt-1 border-t border-stone-200 text-red-600 dark:border-stone-700 dark:text-red-400`} onClick={act(onDelete)}>
+        <button type="button" className={`${item} mt-1 border-t border-gray-200 text-red-600 dark:border-gray-700 dark:text-red-400`} onClick={act(onDelete)}>
           Delete note
         </button>
       </div>

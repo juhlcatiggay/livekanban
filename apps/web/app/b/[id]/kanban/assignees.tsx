@@ -28,14 +28,14 @@ export function AssigneeAvatars({ names, max = 3 }: { names: string[]; max?: num
       {shown.map((n) => (
         <span
           key={n}
-          className="flex h-5 w-5 items-center justify-center rounded-full border border-white text-[9px] font-semibold text-white dark:border-stone-900"
+          className="flex h-5 w-5 items-center justify-center rounded-full border border-white text-[9px] font-semibold text-white dark:border-gray-900"
           style={{ backgroundColor: colorFor(n) }}
         >
           {initials(n)}
         </span>
       ))}
       {extra > 0 && (
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full border border-white bg-stone-300 px-1 text-[9px] font-semibold text-stone-700 dark:border-stone-900 dark:bg-stone-600 dark:text-stone-100">
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full border border-white bg-gray-300 px-1 text-[9px] font-semibold text-gray-700 dark:border-gray-900 dark:bg-gray-600 dark:text-gray-100">
           +{extra}
         </span>
       )}
@@ -67,12 +67,12 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
   return (
     <div className="flex flex-col gap-1.5">
       <div
-        className={`flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-stone-300 px-1.5 py-1 focus-within:border-teal-500 dark:border-stone-700 ${
-          readOnly ? "bg-stone-50 dark:bg-stone-800/40" : ""
+        className={`flex min-h-9 flex-wrap items-center gap-1.5 field px-1.5 py-1 ${
+          readOnly ? "bg-gray-50 dark:bg-gray-800/40" : ""
         }`}
       >
         {value.map((name) => (
-          <span key={name} className="flex items-center gap-1 rounded-full bg-stone-100 py-0.5 pl-0.5 pr-2 text-sm font-normal dark:bg-stone-800">
+          <span key={name} className="flex items-center gap-1 rounded-full bg-gray-100 py-0.5 pl-0.5 pr-2 text-sm font-normal dark:bg-gray-800">
             <span
               className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white"
               style={{ backgroundColor: colorFor(name) }}
@@ -81,7 +81,7 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
             </span>
             {name}
             {!readOnly && (
-              <button type="button" onClick={() => remove(name)} aria-label={`Remove ${name}`} className="ml-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200">
+              <button type="button" onClick={() => remove(name)} aria-label={`Remove ${name}`} className="ml-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                 ×
               </button>
             )}
@@ -116,7 +116,7 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
             className="min-w-24 flex-1 bg-transparent px-1 py-0.5 text-sm font-normal outline-none"
           />
         )}
-        {readOnly && !value.length && <span className="px-1 text-sm font-normal text-stone-400">Nobody</span>}
+        {readOnly && !value.length && <span className="px-1 text-sm font-normal text-gray-400">Nobody</span>}
       </div>
       {!readOnly && !full && offered.length > 0 && (
         <div className="flex flex-wrap gap-1 text-xs font-normal">
@@ -125,7 +125,7 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
               key={s}
               type="button"
               onClick={() => add(s)}
-              className="rounded-full border border-dashed border-stone-300 px-2 py-0.5 text-stone-600 hover:border-teal-500 hover:text-teal-700 dark:border-stone-700 dark:text-stone-300"
+              className="rounded-full bg-black/5 px-2.5 py-0.5 text-gray-700 hover:bg-accent-600 hover:text-white dark:bg-white/10 dark:text-gray-200"
             >
               + {s}
             </button>

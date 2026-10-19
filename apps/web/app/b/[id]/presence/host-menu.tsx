@@ -46,37 +46,38 @@ export function HostMenu({ boardId }: { boardId: string }) {
 
   return (
     <details ref={menu} className="relative">
-      <summary className="cursor-pointer list-none rounded-md bg-amber-100 px-2 py-1 text-sm font-medium text-amber-900 hover:bg-amber-200 dark:bg-amber-900/60 dark:text-amber-100">
+      <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-[13px] font-medium text-gray-700 hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10">
         Host settings
       </summary>
-      <div className="absolute right-0 z-40 mt-1 w-72 rounded-lg border border-stone-200 bg-white p-3 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+      <div className="absolute right-0 z-40 mt-1 w-72 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-3 text-sm shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90">
         <fieldset>
-          <legend className="mb-1 font-medium">Everyone else can…</legend>
+          <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-500">Everyone else can</legend>
           {PERMISSIONS.map((p) => (
-            <label key={p} className="flex items-center gap-2 py-1">
+            <label key={p} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="first-letter:uppercase">{PERMISSION_LABELS[p]}</span>
               <input
                 type="checkbox"
+                role="switch"
                 checked={permissions[p]}
                 onChange={(e) => dispatch({ kind: "board.permissions", permissions: { ...permissions, [p]: e.target.checked } })}
-                className="h-4 w-4 accent-teal-600"
+                className="switch"
               />
-              {PERMISSION_LABELS[p]}
             </label>
           ))}
         </fieldset>
-        <p className="mt-1 text-xs text-stone-500">Unchecked parts are view-only for everyone but you. You can always change everything.</p>
-        <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
+        <p className="mt-1 text-xs text-gray-500">Unchecked parts are view-only for everyone but you. You can always change everything.</p>
+        <div className="hairline mt-3 border-t pt-3">
           <button
             type="button"
             onClick={copyHostLink}
-            className="rounded-md border border-stone-300 px-2 py-1 text-sm hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+            className="rounded-full px-2 py-1 text-sm hover:bg-black/10 dark:hover:bg-white/15 bg-black/5 dark:bg-white/10"
           >
             {copied ? "Host link copied" : "Copy host link"}
           </button>
-          <p className="mt-1 text-xs text-stone-500">Opens this board as host on another device. Anyone with it becomes a host, so share it only with co-hosts.</p>
+          <p className="mt-1 text-xs text-gray-500">Opens this board as host on another device. Anyone with it becomes a host, so share it only with co-hosts.</p>
         </div>
         <PasswordSettings />
-        <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
+        <div className="hairline mt-3 border-t pt-3">
           <button
             type="button"
             onClick={deleteBoard}
@@ -105,9 +106,9 @@ function PasswordSettings() {
   };
 
   return (
-    <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
+    <div className="hairline mt-3 border-t pt-3">
       <p className="font-medium">Password</p>
-      <p className="mt-0.5 text-xs text-stone-500">
+      <p className="mt-0.5 text-xs text-gray-500">
         {locked ? "On: everyone else needs it to open the board. People already here stay." : "Off: anyone with the link can open the board."}
       </p>
       {editing ? (
@@ -127,9 +128,9 @@ function PasswordSettings() {
             value={value}
             maxLength={PASSWORD.max}
             onChange={(e) => setValue(e.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-stone-300 bg-transparent px-2 py-1 outline-none focus:border-teal-500 dark:border-stone-700"
+            className="field min-w-0 flex-1 rounded-md px-2 py-1"
           />
-          <button type="submit" disabled={value.length < PASSWORD.min} className="rounded-md bg-teal-600 px-2 py-1 font-medium text-white disabled:opacity-50">
+          <button type="submit" disabled={value.length < PASSWORD.min} className="rounded-full bg-accent-600 px-2 py-1 font-medium text-white disabled:opacity-50">
             Save
           </button>
         </form>
@@ -138,7 +139,7 @@ function PasswordSettings() {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="rounded-md border border-stone-300 px-2 py-1 hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+            className="rounded-full px-2 py-1 hover:bg-black/10 dark:hover:bg-white/15 bg-black/5 dark:bg-white/10"
           >
             {locked ? "Change password" : "Set a password"}
           </button>
@@ -171,8 +172,8 @@ export function ViewOnlyNotice() {
   const restricted = PERMISSIONS.filter((p) => !can[p]);
   if (!restricted.length) return null;
   return (
-    <span className="ml-auto self-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-300" role="status">
+    <p className="hairline border-b bg-accent-50 px-4 py-1.5 text-center text-xs text-accent-900 dark:bg-accent-950 dark:text-accent-100" role="status">
       View only: the host doesn&apos;t let others {restricted.map((p) => PERMISSION_LABELS[p]).join(", ")}
-    </span>
+    </p>
   );
 }

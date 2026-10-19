@@ -99,6 +99,7 @@ Pages come from Vercel; every live message goes browser → Worker → that boar
 **Stack**
 
 - **App:** Next.js 16 App Router, TypeScript, Tailwind. Server components for the landing and expired pages; the board itself is a client component.
+- **Design:** Apple's interface principles (see the `apple-design` skill): the system font with size-specific tracking, Apple's neutral grays (`gray-*`) and system blue (`accent-*`) defined once in `app/globals.css`, translucent materials for floating chrome, segmented controls, inset grouped lists with switches, sheets for dialogs, menus that grow from their trigger, press feedback, and fallbacks for reduced motion, reduced transparency and increased contrast. Shared control styles live in `lib/ui.ts`.
 - **Drag and drop:** dnd-kit (pointer + keyboard sensors). Remote ghosts are rendered by our own overlay, not by dnd-kit.
 - **Realtime client:** PartySocket (auto-reconnect, buffering) wrapped in a small `useBoard()` store built on Zustand.
 - **Realtime server:** a Worker with a `BoardRoom` class extending PartyServer's `Server`, using the WebSocket Hibernation API so idle boards cost nothing.

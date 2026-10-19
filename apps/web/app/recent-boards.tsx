@@ -7,6 +7,7 @@ import { ago } from "@/lib/describe";
 import { getHostKey } from "@/lib/host";
 import { forgetBoard, parseRecent, readRecentRaw, subscribeRecent, type RecentBoard } from "@/lib/recent-boards";
 import { CreateBoardButton } from "./create-board-button";
+import { Icon } from "./icons";
 
 const EMPTY = "[]";
 const keptFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -15,7 +16,7 @@ const keptFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "sh
 type Status = { status: "active"; keptUntil: number; locked?: boolean } | { status: "expired" } | { status: "unknown" };
 
 /** Accent colors for board cards, picked from the id so a board always looks the same. */
-const ACCENTS = ["bg-teal-500", "bg-amber-500", "bg-rose-500", "bg-indigo-500", "bg-lime-600", "bg-purple-500", "bg-sky-500", "bg-orange-600"];
+const ACCENTS = ["bg-[#0071e3]", "bg-[#ff9500]", "bg-[#ff2d55]", "bg-[#5856d6]", "bg-[#34c759]", "bg-[#af52de]", "bg-[#30b0c7]", "bg-[#ff3b30]"];
 const accent = (id: string) => ACCENTS[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % ACCENTS.length];
 
 /**
@@ -32,24 +33,23 @@ export function MyBoards() {
   const statuses = useStatuses(boards.map((b) => b.id));
 
   return (
-    <section id="my-boards" aria-labelledby="my-boards-heading" className="mx-auto w-full max-w-5xl scroll-mt-20 px-4 py-14">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="my-boards-heading" className="text-2xl font-bold tracking-tight">
-            My boards
-          </h2>
-          <p className="mt-1 text-sm text-stone-500">Boards you&apos;ve opened in this browser. Nothing is stored on a server account.</p>
-        </div>
-      </div>
+    <section id="my-boards" aria-labelledby="my-boards-heading" className="mx-auto w-full max-w-[980px] scroll-mt-12 px-4 py-20">
+      <h2 id="my-boards-heading" className="text-4xl font-semibold sm:text-5xl">
+        My boards.
+      </h2>
+      <p className="mt-3 text-[17px] text-gray-600 dark:text-gray-400">Every board you&apos;ve opened in this browser. No account needed.</p>
       {boards.length === 0 ? (
-        <div className="mt-6 flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-stone-300 px-6 py-12 text-center dark:border-stone-700">
-          <p className="text-stone-600 dark:text-stone-400">No boards yet. Create one, or open a link someone shared with you.</p>
+        <div className="mt-10 flex flex-col items-center gap-5 rounded-[18px] bg-white px-6 py-14 text-center dark:bg-gray-900">
+          <span className="text-gray-400">
+            <Icon name="columns" className="h-10 w-10" />
+          </span>
+          <p className="text-[17px] text-gray-600 dark:text-gray-400">No boards yet. Create one, or open a link someone shared with you.</p>
           <CreateBoardButton />
         </div>
       ) : (
         <>
-          <BoardGroup title="My own boards" hint="You're the host." boards={own} statuses={statuses} host empty="Boards you create show up here." />
-          <BoardGroup title="Others' boards" hint="Shared with you by link." boards={shared} statuses={statuses} empty="Boards people share with you show up here once you open them." />
+          <BoardGroup title="My own boards" hint="You're the host." boards={own} statuses={statuses} host empty="Boards you create appear here." />
+          <BoardGroup title="Others' boards" hint="Shared with you by link." boards={shared} statuses={statuses} empty="Boards people share with you appear here once you open them." />
         </>
       )}
     </section>
@@ -72,12 +72,11 @@ function BoardGroup({
   empty: string;
 }) {
   return (
-    <div className="mt-8">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-        {title} <span className="font-normal normal-case tracking-normal">· {boards.length ? hint : empty}</span>
-      </h3>
+    <div className="mt-12">
+      <h3 className="text-[21px] font-semibold">{title}</h3>
+      <p className="mt-1 text-[15px] text-gray-500">{boards.length ? hint : empty}</p>
       {boards.length > 0 && (
-        <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label={title}>
+        <ul className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label={title}>
           {boards.map((b) => (
             <BoardCard key={b.id} board={b} status={statuses[b.id]} host={host} />
           ))}
@@ -95,26 +94,27 @@ function BoardCard({ board, status, host }: { board: RecentBoard; status?: Statu
       <Link
         href={`/b/${board.id}`}
         aria-label={`${title}${expired ? " (expired)" : ""}`}
-        className={`flex h-full flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-stone-800 dark:bg-stone-900 ${
-          expired ? "opacity-60" : ""
+        className={`press flex h-full items-start gap-4 rounded-[18px] bg-white p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_10px_30px_-10px_rgb(0_0_0/0.2)] dark:bg-gray-900 ${
+          expired ? "opacity-55" : ""
         }`}
       >
-        <span className={`h-2 ${accent(board.id)}`} />
-        <span className="flex flex-1 flex-col gap-2 p-4">
-          <span className="flex items-start justify-between gap-2">
-            <span className="line-clamp-2 font-semibold">{title}</span>
-            <span className="flex shrink-0 gap-1">
-              {status?.status === "active" && status.locked && (
-                <span title="Has a password" aria-label="Has a password" className="text-sm">
-                  🔒
-                </span>
-              )}
-              {host && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900 dark:bg-amber-900/60 dark:text-amber-100">Host</span>}
-            </span>
+        <span aria-hidden className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white ${accent(board.id)}`}>
+          <Icon name="columns" className="h-6 w-6" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[17px] font-semibold">{title}</span>
+            {status?.status === "active" && status.locked && (
+              <span title="Has a password" aria-label="Has a password" className="shrink-0 text-gray-400">
+                <Icon name="lock" className="h-4 w-4" />
+              </span>
+            )}
           </span>
-          <span className="mt-auto text-xs text-stone-500">Opened {ago(board.visitedAt)}</span>
-          <span className="text-xs text-stone-500">
-            {status?.status === "active" ? `Kept until ${keptFormat.format(status.keptUntil)}` : expired ? "Expired" : " "}
+          <span className="text-[13px] text-gray-500">
+            {host ? "Host · " : ""}Opened {ago(board.visitedAt)}
+          </span>
+          <span className={`text-[13px] ${expired ? "text-red-600 dark:text-red-400" : "text-gray-500"}`}>
+            {status?.status === "active" ? `Kept until ${keptFormat.format(status.keptUntil)}` : expired ? "Expired" : " "}
           </span>
         </span>
       </Link>
@@ -123,7 +123,7 @@ function BoardCard({ board, status, host }: { board: RecentBoard; status?: Statu
         onClick={() => forgetBoard(board.id)}
         aria-label={`Remove ${title} from this list`}
         title="Remove from this list (doesn't delete the board)"
-        className="absolute right-2 top-4 hidden rounded-full bg-white/90 px-2 text-stone-500 shadow hover:text-stone-900 group-focus-within:block group-hover:block dark:bg-stone-800/90"
+        className="absolute right-3 top-3 hidden h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-sm leading-none text-gray-600 hover:bg-gray-300 group-focus-within:flex group-hover:flex dark:bg-gray-700 dark:text-gray-200"
       >
         ×
       </button>
