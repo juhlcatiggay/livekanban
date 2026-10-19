@@ -54,6 +54,10 @@ export function requiredPermissions(op: Op): Permission[] | null {
     case "card.update":
     case "card.delete":
     case "card.restore":
+    case "checklist.add":
+    case "checklist.update":
+    case "checklist.delete":
+    case "label.color":
       return ["editCards"];
     case "note.create":
     case "note.update":

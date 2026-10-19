@@ -586,6 +586,85 @@ const tests = {
     d2.ws.close();
   },
 
+  async "checklists, start dates and label colors persist and merge per item"() {
+    const id = await newBoard();
+    const a = await join(id, "Ada");
+    const b = await join(id, "Bob");
+    await a.next(); // join(b)
+    const col = firstColumnId(a.welcome);
+    await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "Launch" });
+    await b.next();
+
+    const item = (n) => ({ id: `item0000${n}`, text: `Step ${n}`, done: false });
+    for (const n of [1, 2, 3]) {
+      assert.equal((await op(a, { kind: "checklist.add", id: "card00001", item: item(n) })).t, "ack");
+      await b.next();
+    }
+    // Two people tick different items at the same time: both ticks survive.
+    a.send({ t: "op", cid: "tick-a", op: { kind: "checklist.update", id: "card00001", itemId: "item00001", patch: { done: true } } });
+    b.send({ t: "op", cid: "tick-b", op: { kind: "checklist.update", id: "card00001", itemId: "item00003", patch: { done: true } } });
+    // Each side gets its own ack and the other's broadcast, in either order; wait for both
+    // so nothing is left queued for the next op() to read.
+    const ackAndBroadcast = async (client, cid, otherItem) => {
+      let acked = false;
+      let saw = false;
+      while (!acked || !saw) {
+        const m = await client.next();
+        if (m.cid === cid) acked = true;
+        else if (m.t === "opb" && m.op.op.itemId === otherItem) saw = true;
+      }
+    };
+    await Promise.all([ackAndBroadcast(a, "tick-a", "item00003"), ackAndBroadcast(b, "tick-b", "item00001")]);
+
+    const dup = await op(a, { kind: "checklist.add", id: "card00001", item: item(1) });
+    assert.equal(dup.t, "reject");
+    const gone = await op(a, { kind: "checklist.delete", id: "card00001", itemId: "nope00000" });
+    assert.equal(gone.reason, "That checklist item was removed");
+    assert.equal((await op(a, { kind: "checklist.add", id: "card00001", item: { id: "item00009", text: "  " } })).reason, "Invalid change");
+    assert.equal((await op(a, { kind: "checklist.add", id: "card00001", item: item(4), index: 0 })).t, "ack");
+    assert.equal((await op(a, { kind: "checklist.delete", id: "card00001", itemId: "item00002" })).t, "ack");
+
+    assert.equal((await op(a, { kind: "card.update", id: "card00001", patch: { startDate: "2026-11-02", dueDate: "2026-11-20" } })).t, "ack");
+    assert.equal((await op(a, { kind: "card.update", id: "card00001", patch: { startDate: "2026-02-30" } })).reason, "Invalid change");
+    assert.equal((await op(a, { kind: "label.color", label: "  Bug ", color: "red" })).t, "ack");
+    assert.equal((await op(a, { kind: "label.color", label: "design", color: "blue" })).t, "ack");
+    assert.equal((await op(a, { kind: "label.color", label: "design", color: null })).t, "ack");
+    assert.equal((await op(a, { kind: "label.color", label: "x", color: "neon" })).reason, "Invalid change");
+    a.ws.close();
+    b.ws.close();
+
+    const c = await join(id, "Cy");
+    const board = c.welcome.sync.board;
+    const card = board.cards.card00001;
+    assert.deepEqual(
+      card.checklist.map((i) => [i.id, i.done]),
+      [["item00004", false], ["item00001", true], ["item00003", true]],
+    );
+    assert.equal(card.startDate, "2026-11-02");
+    assert.equal(card.dueDate, "2026-11-20");
+    assert.deepEqual(board.labelColors, { bug: "red" });
+    c.ws.close();
+  },
+
+  async "only the host can delete the board, and it's gone for everyone"() {
+    const res = await fetch(`${base}/api/boards`, { method: "POST" });
+    const { id, hostKey } = await res.json();
+    const host = await join(id, "Hana", 0, hostKey);
+    const guest = await join(id, "Gus");
+    await host.next(); // join(guest)
+
+    guest.send({ t: "deleteBoard" });
+    assert.deepEqual(await guest.next(), { t: "deleteRefused", reason: "Only the host can delete this board" });
+
+    host.send({ t: "deleteBoard" });
+    assert.deepEqual(await guest.until((m) => m.t === "deleted"), { t: "deleted", by: "Hana" });
+    assert.equal(await guest.closed, 4404);
+    assert.equal(await host.closed, 4404);
+    assert.equal((await (await fetch(`${base}/parties/board-room/${id}`)).json()).status, "expired");
+    const again = connect(id);
+    assert.equal((await again.next()).t, "expired");
+  },
+
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);

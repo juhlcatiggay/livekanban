@@ -383,6 +383,19 @@ export class BoardRoom extends Server<Env> {
         if (conn.state) this.send(conn, { t: "backup", day: msg.day, board: this.store.backup(msg.day) });
         return;
 
+      case "deleteBoard": {
+        if (!conn.state) return;
+        if (!conn.state.host) return this.send(conn, { t: "deleteRefused", reason: "Only the host can delete this board" });
+        const by = conn.state.name;
+        for (const other of this.getConnections()) {
+          this.send(other, { t: "deleted", by });
+          other.close(CloseCode.Expired, "Board deleted");
+        }
+        // Like expiry: the database and alarm go, and the link shows "expired" from now on.
+        this.ctx.waitUntil(this.ctx.storage.deleteAll());
+        return;
+      }
+
       // ---- presence: kept in connection state, never in SQLite ----
 
       case "presence":

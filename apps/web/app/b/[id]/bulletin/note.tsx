@@ -16,6 +16,7 @@ import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 import { EditingBadge } from "../kanban/card";
 import { COLOR_STYLES } from "../kanban/colors";
 import { Markdown } from "../kanban/markdown";
+import { MarkdownEditor } from "../kanban/markdown-editor";
 import { clampToCanvas } from "./placement";
 
 /** Sticky-note paper colors; text stays dark so notes read the same in both themes. */
@@ -89,13 +90,13 @@ export function useNoteEditor(note: Note, { start = false, canEdit = true, onDon
   return {
     editing,
     open: () => canEdit && setEditing(true),
-    textareaProps: {
+    /** Props for <MarkdownEditor>. */
+    editorProps: {
       autoFocus: true,
       "aria-label": "Note text",
       value: draft ?? note.text,
       maxLength: LIMITS.description,
-      onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
+      onChange: (text: string) => {
         setDraft(text);
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(() => flushText(text), SAVE_DEBOUNCE_MS);
@@ -171,7 +172,8 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         top: pos.y,
         width: dims.w,
         height: dims.h,
-        zIndex: drag ? 100_000 : note.z,
+        // Dragged or being edited (its toolbar floats above it): on top of every other note.
+        zIndex: drag || editing ? 100_000 : note.z,
         boxShadow: editor ? `0 0 0 3px ${editor.color}` : undefined,
         cursor: editing || !canEdit ? "auto" : drag ? "grabbing" : "grab",
       }}
@@ -221,8 +223,10 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
       }}
     >
       {editing ? (
-        <textarea
-          {...textEditor.textareaProps}
+        <MarkdownEditor
+          {...textEditor.editorProps}
+          toolbar="floating"
+          wrapperClassName="h-full"
           className={`h-full w-full resize-none rounded-sm border p-3 text-sm text-stone-900 shadow outline-none ${PAPER[note.color]}`}
         />
       ) : (

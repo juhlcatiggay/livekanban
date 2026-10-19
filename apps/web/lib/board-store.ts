@@ -24,7 +24,7 @@ import { HISTORY_LIMIT, coalesces, invert, type HistoryEntry } from "./history";
 import { saveIdentity } from "./identity";
 import { forgetBoard, rememberBoard } from "./recent-boards";
 
-export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "expired" | "full";
+export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "expired" | "deleted" | "full";
 
 interface BoardState {
   status: ConnectionStatus;
@@ -51,7 +51,13 @@ interface BoardState {
    * Applies `op` optimistically and sends it to the room. Recorded for
    * undo/redo unless `record` is false.
    */
-  dispatch: (op: Op, options?: { record?: boolean }) => void;
+  dispatch: (op: Op, options?: { record?: boolean; group?: string }) => void;
+  /** Applies several ops as one change: a single undo reverts them all. */
+  dispatchAll: (ops: Op[]) => void;
+  /** Host only: deletes the board for everyone. */
+  deleteBoard: () => void;
+  /** Who deleted the board, once status is "deleted". */
+  deletedBy: string | null;
   undo: () => void;
   redo: () => void;
   requestTrash: () => void;
@@ -83,6 +89,9 @@ const initialState = {
   canRedo: false,
   trash: null,
   dispatch: noop,
+  dispatchAll: noop,
+  deleteBoard: noop,
+  deletedBy: null,
   undo: noop,
   redo: noop,
   requestTrash: noop,
@@ -158,17 +167,17 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
   const publishHistory = () => set({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
 
   /** Records `op` (about to be applied) with its inverse against the current view. */
-  const record = (stack: HistoryEntry[], op: Op): HistoryEntry[] => {
+  const record = (stack: HistoryEntry[], op: Op, group?: string): HistoryEntry[] => {
     const board = useBoard.getState().board;
     const inverse = board ? invert(board, op) : null;
     if (!inverse) return stack;
-    const entry: HistoryEntry = { op, inverse, at: Date.now() };
+    const entry: HistoryEntry = { op, inverse, at: Date.now(), group };
     // Typing into a field produces a save every 300 ms; keep the oldest inverse so one undo restores it.
     if (coalesces(stack.at(-1), entry)) return [...stack.slice(0, -1), { ...entry, inverse: stack.at(-1)!.inverse }];
     return [...stack, entry].slice(-HISTORY_LIMIT);
   };
 
-  const dispatch = (op: Op, { record: recordIt = true } = {}) => {
+  const dispatch = (op: Op, { record: recordIt = true, group }: { record?: boolean; group?: string } = {}) => {
     // Normalize exactly as the room will (trimming, deduped labels) so the optimistic view matches.
     const wire = parseOp(op);
     if (!wire) {
@@ -176,7 +185,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
       return;
     }
     if (recordIt) {
-      undoStack = record(undoStack, op);
+      undoStack = record(undoStack, op, group);
       redoStack = [];
       publishHistory();
     }
@@ -188,19 +197,31 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
     if (wire.kind === "board.update") rememberBoard(boardId, wire.title);
   };
 
+  const dispatchAll = (ops: Op[]) => {
+    const group = ops.length > 1 ? nanoid(8) : undefined;
+    for (const op of ops) dispatch(op, { group });
+  };
+
   /** Applies the top entry's inverse and moves it to the other stack, inverted again. */
-  const step = (from: "undo" | "redo") => {
+  const stepOne = (from: "undo" | "redo"): HistoryEntry | undefined => {
     const source = from === "undo" ? undoStack : redoStack;
     const entry = source.at(-1);
     if (!entry) return;
     if (from === "undo") undoStack = undoStack.slice(0, -1);
     else redoStack = redoStack.slice(0, -1);
-    const back = record([], entry.inverse)[0];
+    const back = record([], entry.inverse, entry.group)[0];
     if (back) {
       if (from === "undo") redoStack = [...redoStack, back];
       else undoStack = [...undoStack, back].slice(-HISTORY_LIMIT);
     }
     dispatch(entry.inverse, { record: false });
+    return entry;
+  };
+
+  /** Undoes or redoes one step: a single change, or every op of a grouped one (e.g. moving several cards). */
+  const step = (from: "undo" | "redo") => {
+    const first = stepOne(from);
+    while (first?.group && (from === "undo" ? undoStack : redoStack).at(-1)?.group === first.group) stepOne(from);
     publishHistory();
   };
 
@@ -229,6 +250,8 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
       ...initialState,
       me,
       dispatch,
+      dispatchAll,
+      deleteBoard: () => send({ t: "deleteBoard" }),
       undo: () => step("undo"),
       redo: () => step("redo"),
       requestTrash: () => send({ t: "trash" }),
@@ -349,6 +372,14 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
         forgetBoard(boardId);
         stop("expired");
         break;
+      case "deleted":
+        forgetBoard(boardId);
+        set({ deletedBy: msg.by });
+        stop("deleted");
+        break;
+      case "deleteRefused":
+        set({ error: msg.reason });
+        break;
     }
   });
 
@@ -356,6 +387,7 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
     synced = false;
     clearCursors();
     pending = pending.map((p) => ({ ...p, resent: true }));
+    if (useBoard.getState().status === "deleted") return;
     if (event.code === CloseCode.Expired) return stop("expired");
     if (event.code === CloseCode.RoomFull) return stop("full");
     if (event.code === CloseCode.RateLimited) set({ error: "Too many messages from this tab; reconnecting…" });
@@ -374,6 +406,8 @@ export function connectBoard(boardId: string, initialIdentity: Identity, hostKey
     socket.close();
     set({
       dispatch: noop,
+      dispatchAll: noop,
+      deleteBoard: noop,
       undo: noop,
       redo: noop,
       requestTrash: noop,

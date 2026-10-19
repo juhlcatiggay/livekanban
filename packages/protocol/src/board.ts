@@ -1,4 +1,4 @@
-import { generateKeyBetween } from "fractional-indexing";
+import { generateKeyBetween, generateNKeysBetween } from "fractional-indexing";
 import { DEFAULT_PERMISSIONS, type Permissions } from "./permissions";
 
 /** Fixed palette so colors render consistently and can't carry arbitrary CSS. */
@@ -16,6 +16,11 @@ export const LIMITS = {
   /** Per assignee name. */
   assignee: 60,
   assignees: 10,
+  /** Checklist items per card, and characters per item. */
+  checklist: 100,
+  checklistItem: 200,
+  /** Labels with a chosen color, per board. */
+  labelColors: 200,
   wipLimit: 999,
 } as const;
 
@@ -26,6 +31,14 @@ export interface Column {
   position: string;
   color: Color | null;
   wipLimit: number | null;
+}
+
+/** One line of a card's checklist. */
+export interface ChecklistItem {
+  /** Client-generated short id. */
+  id: string;
+  text: string;
+  done: boolean;
 }
 
 export interface Card {
@@ -45,8 +58,11 @@ export interface Card {
   labels: string[];
   /** Free-text names, deduplicated, in the order they were added. */
   assignees: string[];
-  /** ISO date, YYYY-MM-DD. */
+  /** ISO dates, YYYY-MM-DD. */
+  startDate: string | null;
   dueDate: string | null;
+  /** In display order. Changed with checklist.* ops so two people ticking items never clobber each other. */
+  checklist: ChecklistItem[];
   updatedAt: number;
   updatedBy: string;
 }
@@ -87,10 +103,16 @@ export interface BoardData {
   permissions: Permissions;
   /** False for boards created before hosts existed: nobody can restrict them. */
   hasHost: boolean;
+  /**
+   * Colors people picked for labels, by labelKey(label). Labels without one
+   * get a color derived from their text, so the same label always looks the same.
+   */
+  labelColors: Record<string, Color>;
 }
 
 export type ColumnPatch = Partial<Pick<Column, "title" | "color" | "wipLimit">>;
-export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignees" | "dueDate">>;
+export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignees" | "startDate" | "dueDate">>;
+export type ChecklistPatch = Partial<Pick<ChecklistItem, "text" | "done">>;
 export type NotePatch = Partial<Pick<Note, "text" | "color" | "w" | "h">>;
 
 export type Op =
@@ -123,7 +145,13 @@ export type Op =
   /** Replaces a card with a note made from its title and description (see cardToNoteText). */
   | { kind: "card.toNote"; id: string; noteId: string; x: number; y: number; z?: number; number?: number }
   /** Host only: what everyone else may change. */
-  | { kind: "board.permissions"; permissions: Permissions };
+  | { kind: "board.permissions"; permissions: Permissions }
+  /** Adds an item to card `id`'s checklist, at `index` (default: the end). */
+  | { kind: "checklist.add"; id: string; item: ChecklistItem; index?: number }
+  | { kind: "checklist.update"; id: string; itemId: string; patch: ChecklistPatch }
+  | { kind: "checklist.delete"; id: string; itemId: string }
+  /** Sets the color every card shows for `label` (null goes back to the automatic color). */
+  | { kind: "label.color"; label: string; color: Color | null };
 
 export type OpKind = Op["kind"];
 
@@ -144,7 +172,29 @@ export const emptyBoard = (): BoardData => ({
   pinnedNoteId: null,
   permissions: DEFAULT_PERMISSIONS,
   hasHost: false,
+  labelColors: {},
 });
+
+/** Labels match case-insensitively: "Bug" and "bug" share a color. */
+export const labelKey = (label: string) => label.trim().toLowerCase();
+
+/** Colors labels get automatically; gray is left for people to pick. */
+const AUTO_LABEL_COLORS = COLORS.filter((c) => c !== "gray");
+
+/** The color a label shows: the one someone picked, else one derived from its text. */
+export function labelColor(labelColors: Record<string, Color>, label: string): Color {
+  const key = labelKey(label);
+  const picked = labelColors[key];
+  if (picked) return picked;
+  let hash = 0;
+  for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return AUTO_LABEL_COLORS[hash % AUTO_LABEL_COLORS.length];
+}
+
+/** Done and total checklist items. */
+export function checklistProgress(card: Pick<Card, "checklist">): { done: number; total: number } {
+  return { done: card.checklist.filter((i) => i.done).length, total: card.checklist.length };
+}
 
 /** A note's first non-empty line becomes the card title; the full text becomes the description if there's more. */
 export function noteToCardFields(text: string): { title: string; description: string } {
@@ -155,17 +205,28 @@ export function noteToCardFields(text: string): { title: string; description: st
   return { title, description };
 }
 
-/** A card's title, then its description, as note text. */
-export function cardToNoteText(card: Pick<Card, "title" | "description">): string {
-  const text = card.description ? `${card.title}\n\n${card.description}` : card.title;
-  return text.slice(0, LIMITS.description);
+/** A card's title, then its description and checklist (as a Markdown task list), as note text. */
+export function cardToNoteText(card: Pick<Card, "title" | "description"> & { checklist?: ChecklistItem[] }): string {
+  const parts = [card.title];
+  if (card.description) parts.push(card.description);
+  if (card.checklist?.length) parts.push(card.checklist.map((i) => `- [${i.done ? "x" : " "}] ${i.text}`).join("\n"));
+  return parts.join("\n\n").slice(0, LIMITS.description);
 }
 
 /** Default size for a note made from a card. */
 export const CONVERTED_NOTE_SIZE = { w: 260, h: 200 } as const;
 
-/** Matches a #12 mention: not inside a word, URL fragment or HTML entity, and not a "# Heading". */
-export const MENTION_RE = /(?<![\w&#/])#(\d{1,6})\b/g;
+/**
+ * A mention of card or note 12 is the Markdown link `[#12](#12)`, inserted by
+ * the # picker. Plain text like "Top #1 Fan" is never a mention.
+ */
+export const mentionMarkdown = (number: number) => `[#${number}](#${number})`;
+
+/** The item number a link's href mentions, or null if it isn't a mention. */
+export function mentionNumber(href: string | undefined): number | null {
+  const m = href ? /^#(\d{1,6})$/.exec(href) : null;
+  return m ? Number(m[1]) : null;
+}
 
 /** The card or note a #number refers to, if any. */
 export function findByNumber(board: Pick<BoardData, "cards" | "notes">, number: number): { kind: "card"; card: Card } | { kind: "note"; note: Note } | null {
@@ -190,6 +251,12 @@ export function byPosition<T extends { position: string; id: string }>(a: T, b: 
 export function positionBetween(before: string | null | undefined, after: string | null | undefined): string {
   if (before && after && before === after) return generateKeyBetween(before, null);
   return generateKeyBetween(before ?? null, after ?? null);
+}
+
+/** `n` ascending positions between two neighbours (null = start/end), for placing several items together. */
+export function positionsBetween(before: string | null | undefined, after: string | null | undefined, n: number): string[] {
+  if (before && after && before >= after) return generateNKeysBetween(before, null, n);
+  return generateNKeysBetween(before ?? null, after ?? null, n);
 }
 
 /** True if `key` is a well-formed fractional index. */
@@ -274,7 +341,9 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
             color: null,
             labels: [],
             assignees: [],
+            startDate: null,
             dueDate: null,
+            checklist: [],
             updatedAt: meta.at,
             updatedBy: meta.by,
           },
@@ -364,7 +433,9 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
         color: note.color,
         labels: [],
         assignees: [],
+        startDate: null,
         dueDate: null,
+        checklist: [],
         updatedAt: meta.at,
         updatedBy: meta.by,
       };
@@ -373,6 +444,23 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
 
     case "board.permissions":
       return { ...board, permissions: op.permissions };
+
+    case "checklist.add":
+    case "checklist.update":
+    case "checklist.delete": {
+      const card = board.cards[op.id];
+      if (!card) return board;
+      const checklist = applyChecklistOp(card.checklist, op);
+      if (!checklist) return board;
+      return { ...board, cards: { ...board.cards, [op.id]: { ...card, checklist, updatedAt: meta.at, updatedBy: meta.by } } };
+    }
+
+    case "label.color": {
+      const labelColors = { ...board.labelColors };
+      if (op.color) labelColors[labelKey(op.label)] = op.color;
+      else delete labelColors[labelKey(op.label)];
+      return { ...board, labelColors };
+    }
 
     case "card.toNote": {
       const card = board.cards[op.id];
@@ -394,5 +482,27 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
       };
       return { ...board, cards, notes: { ...board.notes, [note.id]: note } };
     }
+  }
+}
+
+type ChecklistOp = Extract<Op, { kind: "checklist.add" | "checklist.update" | "checklist.delete" }>;
+
+/**
+ * A card's checklist after `op`, or null if it doesn't apply (duplicate or
+ * missing item). Shared by clients and the room so both agree.
+ */
+export function applyChecklistOp(list: ChecklistItem[], op: ChecklistOp): ChecklistItem[] | null {
+  switch (op.kind) {
+    case "checklist.add": {
+      if (list.some((i) => i.id === op.item.id)) return null;
+      const at = op.index === undefined ? list.length : Math.min(Math.max(op.index, 0), list.length);
+      return [...list.slice(0, at), op.item, ...list.slice(at)];
+    }
+    case "checklist.update":
+      if (!list.some((i) => i.id === op.itemId)) return null;
+      return list.map((i) => (i.id === op.itemId ? { ...i, ...op.patch } : i));
+    case "checklist.delete":
+      if (!list.some((i) => i.id === op.itemId)) return null;
+      return list.filter((i) => i.id !== op.itemId);
   }
 }

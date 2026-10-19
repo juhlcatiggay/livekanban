@@ -212,7 +212,7 @@
   background: var(--md-row-alt);
 }
 
-/* Images load on click (privacy): a placeholder until then. */
+/* Images load on click, or automatically from sites the viewer allowed (privacy): a placeholder until then. */
 .markdown img {
   max-width: 100%;
   height: auto;
@@ -232,6 +232,11 @@
 .markdown .md-image-placeholder button {
   color: var(--md-link);
   text-decoration: underline;
+}
+.markdown .md-image-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.75em;
 }
 
 /* Footnotes. */

@@ -5,7 +5,10 @@ import { COLORS, LIMITS, type Card, type CardPatch } from "@livekanban/protocol"
 import { useBoard } from "@/lib/board-store";
 import { COLOR_STYLES } from "./colors";
 import { AssigneesField } from "./assignees";
+import { ChecklistEditor } from "./checklist";
+import { LabelsField } from "./labels";
 import { Markdown } from "./markdown";
+import { MarkdownEditor } from "./markdown-editor";
 
 /** Text saves are last-writer-wins per field, sent at most every 300 ms while typing. */
 const SAVE_DEBOUNCE_MS = 300;
@@ -35,14 +38,6 @@ function usePatchSender(cardId: string) {
   return { queue, flush };
 }
 
-function parseLabels(text: string): string[] {
-  const labels = text
-    .split(",")
-    .map((l) => l.trim().slice(0, LIMITS.label))
-    .filter(Boolean);
-  return [...new Set(labels)].slice(0, LIMITS.labels);
-}
-
 const editedFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 interface CardDialogProps {
@@ -57,7 +52,7 @@ interface CardDialogProps {
 interface Drafts {
   title?: string;
   description?: string;
-  labels?: string;
+  startDate?: string;
   dueDate?: string;
 }
 
@@ -76,12 +71,17 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
   const draft = <K extends keyof Drafts>(key: K, value: Drafts[K]) => setDrafts((d) => ({ ...d, [key]: value }));
   const title = drafts.title ?? card.title;
   const description = drafts.description ?? card.description;
-  const labels = drafts.labels ?? card.labels.join(", ");
+  const labelColors = useBoard((s) => s.board?.labelColors) ?? {};
+  const allCards = useBoard((s) => s.board?.cards);
+  // Every label used on the board, for suggestions (first spelling wins).
+  const knownLabels = [...new Map(Object.values(allCards ?? {}).flatMap((c) => c.labels.map((l) => [l.toLowerCase(), l] as const))).values()].sort();
   // Assignees change in whole steps (add/remove a chip), so they follow the card directly.
   const me = useBoard((s) => s.me);
   const peerNames = Object.values(useBoard((s) => s.peers)).map((p) => p.name);
   const suggestions = [...new Set([...(me ? [me.name] : []), ...peerNames])];
+  const startDate = drafts.startDate ?? card.startDate ?? "";
   const dueDate = drafts.dueDate ?? card.dueDate ?? "";
+  const datesBackwards = startDate !== "" && dueDate !== "" && startDate > dueDate;
   // Cards with a description open showing it rendered; empty ones open ready to write.
   /** The description shows rendered; Edit switches to the Markdown source until Done. */
   const [editingDescription, setEditingDescription] = useState(false);
@@ -159,16 +159,16 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
             )}
           </div>
           {editingDescription && !readOnly ? (
-            <textarea
+            <MarkdownEditor
               autoFocus
               aria-label="Description"
               rows={10}
               value={description}
               maxLength={LIMITS.description}
-              placeholder="Add details. Markdown works: **bold**, - lists, [links](https://…). Mention a card or note with #number."
-              onChange={(e) => {
-                draft("description", e.target.value);
-                queue({ description: e.target.value });
+              placeholder="Add details. Use the toolbar for bold, lists, links and images; type # to mention a card or note."
+              onChange={(text) => {
+                draft("description", text);
+                queue({ description: text });
               }}
               className={`${field} font-normal`}
             />
@@ -185,6 +185,15 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
           )}
         </div>
 
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium" id={`checklist-${card.id}`}>
+            Checklist
+          </span>
+          <div role="group" aria-labelledby={`checklist-${card.id}`}>
+            <ChecklistEditor card={card} readOnly={readOnly} />
+          </div>
+        </div>
+
         <div className="flex flex-col gap-1 text-sm font-medium">
           <span id={`assignees-${card.id}`}>Assignees</span>
           <div role="group" aria-labelledby={`assignees-${card.id}`}>
@@ -199,11 +208,26 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
+            Start date
+            <input
+              type="date"
+              value={startDate}
+              readOnly={readOnly}
+              max={dueDate || undefined}
+              onChange={(e) => {
+                draft("startDate", e.target.value);
+                queue({ startDate: e.target.value || null });
+              }}
+              className={`${field} font-normal`}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">
             Due date
             <input
               type="date"
               value={dueDate}
               readOnly={readOnly}
+              min={startDate || undefined}
               onChange={(e) => {
                 draft("dueDate", e.target.value);
                 queue({ dueDate: e.target.value || null });
@@ -213,19 +237,25 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
           </label>
         </div>
 
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Labels
-          <input
-            value={labels}
-            readOnly={readOnly}
-            placeholder="Comma separated, e.g. bug, design"
-            onChange={(e) => {
-              draft("labels", e.target.value);
-              queue({ labels: parseLabels(e.target.value) });
-            }}
-            className={`${field} font-normal`}
-          />
-        </label>
+        {datesBackwards && (
+          <p role="alert" className="-mt-2 text-xs text-amber-700 dark:text-amber-400">
+            The start date is after the due date.
+          </p>
+        )}
+
+        <div className="flex flex-col gap-1 text-sm font-medium">
+          <span id={`labels-${card.id}`}>Labels</span>
+          <div role="group" aria-labelledby={`labels-${card.id}`}>
+            <LabelsField
+              value={card.labels}
+              onChange={(labels) => dispatch({ kind: "card.update", id: card.id, patch: { labels } })}
+              labelColors={labelColors}
+              onColor={(label, color) => dispatch({ kind: "label.color", label, color })}
+              known={knownLabels}
+              readOnly={readOnly}
+            />
+          </div>
+        </div>
 
         <fieldset className="flex flex-col gap-1.5" disabled={readOnly}>
           <legend className="text-sm font-medium">Color</legend>

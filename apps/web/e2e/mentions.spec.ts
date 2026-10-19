@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// #10 reference numbers and #9 mentions that glide to, shake and (for cards) open the target.
+// Reference numbers, and mentions picked from the # list that glide to, shake and (for cards) open the target.
+// Typed text like "Top #1 Fan" is never a mention.
 
 async function createBoard(page: Page) {
   await page.goto("/");
@@ -33,13 +34,29 @@ test("cards and notes get numbers, and #mentions jump between them", async ({ pa
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("#2");
   await dialog.getByRole("button", { name: "Add description" }).click();
-  await dialog.getByLabel("Description").fill("See #1 and #99, but not `#1` in code.");
+  const description = dialog.getByLabel("Description");
+  // Typing "#1" opens the picker, but a space just keeps typing: plain text.
+  await description.pressSequentially("Top #1");
+  const picker = dialog.getByRole("listbox", { name: "Mention a card or note" });
+  await expect(picker.getByRole("option", { name: /#1 Agenda for Friday/ })).toBeVisible();
+  await description.pressSequentially(" Fan. See #agen");
+  await expect(picker.getByRole("option")).toHaveCount(1);
+  await description.press("Enter");
+  await expect(picker).toHaveCount(0);
+  await expect(description).toHaveValue("Top #1 Fan. See [#1](#1)");
+  // The toolbar's # button opens the same list; Escape closes only the list.
+  await description.pressSequentially(" and ");
+  await dialog.getByRole("toolbar", { name: "Formatting" }).getByRole("button", { name: "Mention a card or note" }).click();
+  await expect(picker.getByRole("option")).toHaveCount(2);
+  await description.press("Escape");
+  await expect(picker).toHaveCount(0);
+  await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Done" }).click();
 
   const preview = dialog.getByRole("region", { name: "Description preview" });
+  await expect(preview.getByRole("link")).toHaveCount(1);
   await expect(preview.getByRole("link", { name: /#1 Agenda for Friday/ })).toBeVisible();
-  await expect(preview.getByTitle("No card or note #99 on this board")).toBeVisible();
-  await expect(preview.locator("code")).toHaveText("#1");
+  await expect(preview).toContainText("Top #1 Fan.");
 
   // Card → note: switches to the bulletin and shakes the note.
   await preview.getByRole("link", { name: /#1 Agenda/ }).click();
@@ -48,7 +65,9 @@ test("cards and notes get numbers, and #mentions jump between them", async ({ pa
 
   // Note → card: back to the kanban, the card shakes first, then opens.
   await note.dblclick();
-  await page.getByLabel("Note text").fill("Agenda for Friday\nBlocked by #2");
+  await page.getByLabel("Note text").fill("Agenda for Friday\nBlocked by ");
+  await page.getByLabel("Note text").pressSequentially("#2");
+  await page.getByRole("option", { name: /#2 Spec/ }).click();
   await page.getByLabel("Note text").press("Escape");
   await note.getByRole("link", { name: /#2 Spec/ }).click();
   await expect(page.getByRole("tab", { name: "Kanban" })).toHaveAttribute("aria-selected", "true");

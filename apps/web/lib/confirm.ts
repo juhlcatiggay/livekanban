@@ -5,6 +5,10 @@ export interface ConfirmRequest {
   body?: string;
   /** Label of the destructive button, e.g. "Delete card". */
   confirmLabel: string;
+  /** For the most destructive actions: the confirm button stays disabled until this is typed. */
+  typeToConfirm?: string;
+  /** An extra, non-destructive action offered alongside (e.g. "Download a copy first"). */
+  secondary?: { label: string; onClick: () => void };
 }
 
 interface ConfirmState {

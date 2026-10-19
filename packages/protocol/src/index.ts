@@ -124,7 +124,9 @@ export type ClientMessage =
   /** Asks for the trash and backup list; answered with `trash`. */
   | { t: "trash" }
   /** Asks for one daily backup; answered with `backup`. */
-  | { t: "backup"; day: string };
+  | { t: "backup"; day: string }
+  /** Host only: deletes the whole board for everyone, permanently. */
+  | { t: "deleteBoard" };
 
 /** How a (re)connecting client catches up: full state, or the ops it missed. */
 export type Sync =
@@ -153,7 +155,11 @@ export type ServerMessage =
   /** Someone else already holds the card you tried to pick up. */
   | { t: "lockDenied"; cardId: string; by: string }
   | CursorBroadcast
-  | { t: "expired" };
+  | { t: "expired" }
+  /** The host deleted the board; `by` is their name. The connection closes next. */
+  | { t: "deleted"; by: string }
+  /** Your deleteBoard was refused. */
+  | { t: "deleteRefused"; reason: string };
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const ANCHOR_RE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -235,6 +241,8 @@ export function parseClientMessage(raw: string): ParsedClientMessage | null {
     }
     case "trash":
       return { t: "trash" };
+    case "deleteBoard":
+      return { t: "deleteBoard" };
     case "backup":
       return typeof m.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(m.day) ? { t: "backup", day: m.day } : null;
     case "lock":
