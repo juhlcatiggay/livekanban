@@ -163,6 +163,7 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 | `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignee`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
 | `notes` | `id`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
 | `ops_log` | `seq`, `op` (JSON), `actor_name`, `at` | last 1,000 ops for reconnect replay and an activity feed |
+| `backups` | `day`, `at`, `board` (JSON) | one per UTC day with activity, 7 kept; boards over ~1.9 MB of JSON skip backups (SQLite's 2 MB value limit) |
 
 **Limits per board** (enforced in the room): 50 columns, 2,000 cards, 500 notes, 200 characters per title, 10,000 per description or note, notes 120–640 px per side, 50 concurrent connections. These keep every board well under the 10 MB-class sizes where snapshots get slow.
 
@@ -184,16 +185,16 @@ The board URL is the only credential, so it must be unguessable and the room mus
 
 **Abuse and limits**
 
-- Turnstile challenge on "Create board" and a per-IP creation limit (e.g. 20 boards/hour) in the Worker.
+- Turnstile challenge on "Create board" and a per-IP creation limit (20 boards/hour) in the Worker. The limit uses a small `CreationLimiter` Durable Object per IP, because Workers' built-in rate limiter only supports 10 s or 60 s windows.
 - Per-connection limits in the room: 60 presence messages/s, 10 ops/s, 12,000-character max message (a 4 KB cap could not carry a 10,000-character description); exceeding them drops messages, repeated abuse closes the socket.
 - The per-board size and connection caps from the Data model section.
 - Render all user text as text; markdown descriptions go through a sanitizer (no raw HTML, `rel="noopener nofollow"` on links).
-- Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep daily snapshots of the ops log for 7 days.
+- Trash + undo so a vandal with the link cannot destroy a board irreversibly; keep a daily backup of the board for 7 days (downloadable from the trash and importable as a new board). Converting a note to a card (or back) replaces the source outright, so the trash never offers a duplicate.
 - A "Report board" link and an admin script to delete a board by ID, since anonymous public boards will eventually host content you must take down.
 
 ## Expiry
 
-Each board schedules its own deletion with a Durable Object alarm, so there is no global cron job and no table of boards to scan.
+Each board schedules its own deletion with a Durable Object alarm, so there is no global cron job and no table of boards to scan. A Durable Object has one alarm, so it is always set to the earliest of three jobs: expiry, trash purge (7 days after a deletion) and the daily backup. Alarm writes are billed, so the alarm only ever moves earlier; when a later job is due, the current alarm fires, finds nothing to do and reschedules.
 
 **Definition:** a board is active when someone opens it or changes it. Opening counts, so a board people only read is not deleted out from under them.
 
@@ -208,7 +209,7 @@ Each board schedules its own deletion with a Durable Object alarm, so there is n
 - No "expiring soon" banner: any visit resets the clock, so the footer date plus a one-line explainer when the board is created is enough.
 - Export to JSON/Markdown is always one click away; import a JSON export to restore into a new board.
 
-**Test it:** make the 60 days a config value and run the full flow with 2 minutes in staging.
+**Test it:** `EXPIRY`, `TRASH_RETENTION` and `BACKUP_EVERY` are duration vars (`60d`, `2m`, `4s`); the write debounce scales down with short windows. `pnpm --filter worker test:hardening` runs the full flow with `EXPIRY=4s`; use `2m` in staging.
 
 ## Roadmap
 

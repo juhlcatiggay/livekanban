@@ -28,6 +28,8 @@ jobs:
         run: pnpm lint
       - name: Worker smoke test
         run: pnpm --filter worker test
+      - name: Expiry, trash, backups, limits and import (short windows)
+        run: pnpm --filter worker test:hardening
       - name: Cursor relay latency (local Worker)
         run: pnpm --filter worker latency
       - name: Worker bundle (dry run)
