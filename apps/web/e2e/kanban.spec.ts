@@ -55,7 +55,11 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   await dialog.getByRole("button", { name: "Add description" }).click();
   await dialog.getByLabel("Description").fill("## Scope\nEverything in phase 2");
   await dialog.getByRole("button", { name: "Done" }).click();
-  await dialog.getByLabel("Assignee").fill("Juhl");
+  // Several assignees: Enter or a comma adds each one.
+  await dialog.getByLabel("Add assignee").fill("Juhl");
+  await dialog.getByLabel("Add assignee").press("Enter");
+  await dialog.getByLabel("Add assignee").fill("Ada Lovelace,");
+  await expect(dialog.getByRole("button", { name: "Remove Ada Lovelace" })).toBeVisible();
   await dialog.getByLabel("Labels").fill("docs, urgent");
   await dialog.getByLabel("Due date").fill("2026-11-30");
   await dialog.getByRole("button", { name: "Purple" }).click();
@@ -73,7 +77,8 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   const saved = card(column(page, "To do"), "Write spec");
   await expect(saved).toContainText("docs");
   await expect(saved).toContainText("urgent");
-  await expect(saved).toContainText("@Juhl");
+  await expect(saved.getByLabel("Assigned to Juhl, Ada Lovelace")).toBeVisible();
+  await expect(saved).toContainText("JAL"); // initials of both
   await expect(saved).toContainText("Due 30 Nov");
 
   await saved.click();

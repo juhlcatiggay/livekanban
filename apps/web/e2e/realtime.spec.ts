@@ -119,8 +119,9 @@ test("editing shows a badge to others, and typing appears live", async ({ browse
   // Bob opens the same card: he sees Ada noted in the dialog and her later typing in untouched fields.
   await card(bob, "Draft v2").click();
   await expect(bob.getByRole("dialog").getByText("Ada is also editing")).toBeVisible();
-  await ada.getByRole("dialog").getByLabel("Assignee").fill("Grace");
-  await expect(bob.getByRole("dialog").getByLabel("Assignee")).toHaveValue("Grace");
+  await ada.getByRole("dialog").getByLabel("Add assignee").fill("Grace");
+  await ada.getByRole("dialog").getByLabel("Add assignee").press("Enter");
+  await expect(bob.getByRole("dialog").getByRole("button", { name: "Remove Grace" })).toBeVisible();
 
   await ada.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await expect(bob.getByRole("dialog").getByText("Ada is also editing")).toHaveCount(0);

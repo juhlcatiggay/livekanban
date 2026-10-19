@@ -199,6 +199,7 @@ const tests = {
     assert.equal(board.columns.col0000001.wipLimit, 3);
     assert.deepEqual(Object.keys(board.cards), ["card00001"]);
     assert.deepEqual(board.cards.card00001.labels, ["ux"]);
+    assert.deepEqual(board.cards.card00001.assignees, ["Ada"], "a legacy single assignee imports as a list");
     assert.equal(board.pinnedNoteId, "note00001");
     assert.equal(board.notes.note00001.w, 120, "sizes are clamped");
     c.socket.close();

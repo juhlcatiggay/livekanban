@@ -114,9 +114,12 @@ function cardPatch(v: unknown): CardPatch | null {
     if (clean.some((l) => l.length === 0 || l.length > LIMITS.label)) return null;
     patch.labels = [...new Set(clean)];
   }
-  if ("assignee" in v) {
-    if (typeof v.assignee !== "string" || v.assignee.length > LIMITS.assignee) return null;
-    patch.assignee = v.assignee.trim();
+  if ("assignees" in v) {
+    const names = v.assignees;
+    if (!Array.isArray(names) || names.length > LIMITS.assignees) return null;
+    const clean = names.map((n) => (typeof n === "string" ? n.trim() : ""));
+    if (clean.some((n) => n.length === 0 || n.length > LIMITS.assignee)) return null;
+    patch.assignees = [...new Set(clean)];
   }
   if ("dueDate" in v) {
     const d = v.dueDate;

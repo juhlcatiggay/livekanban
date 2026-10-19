@@ -13,7 +13,9 @@ export const LIMITS = {
   description: 10_000,
   labels: 10,
   label: 30,
+  /** Per assignee name. */
   assignee: 60,
+  assignees: 10,
   wipLimit: 999,
 } as const;
 
@@ -35,7 +37,8 @@ export interface Card {
   description: string;
   color: Color | null;
   labels: string[];
-  assignee: string;
+  /** Free-text names, deduplicated, in the order they were added. */
+  assignees: string[];
   /** ISO date, YYYY-MM-DD. */
   dueDate: string | null;
   updatedAt: number;
@@ -77,7 +80,7 @@ export interface BoardData {
 }
 
 export type ColumnPatch = Partial<Pick<Column, "title" | "color" | "wipLimit">>;
-export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignee" | "dueDate">>;
+export type CardPatch = Partial<Pick<Card, "title" | "description" | "color" | "labels" | "assignees" | "dueDate">>;
 export type NotePatch = Partial<Pick<Note, "text" | "color" | "w" | "h">>;
 
 export type Op =
@@ -247,7 +250,7 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
             description: "",
             color: null,
             labels: [],
-            assignee: "",
+            assignees: [],
             dueDate: null,
             updatedAt: meta.at,
             updatedBy: meta.by,
@@ -329,7 +332,7 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
         ...noteToCardFields(note.text),
         color: note.color,
         labels: [],
-        assignee: "",
+        assignees: [],
         dueDate: null,
         updatedAt: meta.at,
         updatedBy: meta.by,

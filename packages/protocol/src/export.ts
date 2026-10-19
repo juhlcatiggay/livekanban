@@ -27,7 +27,7 @@ export function toMarkdown(board: BoardData): string {
     for (const card of cards) {
       const meta = [
         ...card.labels.map((l) => `#${l.replace(/\s+/g, "-")}`),
-        card.assignee && `@${card.assignee}`,
+        ...card.assignees.map((a) => `@${a.replace(/\s+/g, "-")}`),
         card.dueDate && `due ${card.dueDate}`,
       ].filter(Boolean);
       lines.push(`- [ ] ${card.title}${meta.length ? ` — ${meta.join(" ")}` : ""}`);
@@ -83,7 +83,9 @@ export function importToOps(data: unknown): { ops: Op[]; dropped: number } | nul
     if (typeof c.description === "string" && c.description) patch.description = c.description;
     if (c.color) patch.color = c.color;
     if (Array.isArray(c.labels) && c.labels.length) patch.labels = c.labels;
-    if (typeof c.assignee === "string" && c.assignee) patch.assignee = c.assignee;
+    // Exports from before multiple assignees have a single `assignee` string.
+    const assignees = Array.isArray(c.assignees) ? c.assignees : typeof c.assignee === "string" && c.assignee ? [c.assignee] : [];
+    if (assignees.length) patch.assignees = assignees;
     if (c.dueDate) patch.dueDate = c.dueDate;
     if (Object.keys(patch).length) raw.push({ kind: "card.update", id: c.id, patch });
   }

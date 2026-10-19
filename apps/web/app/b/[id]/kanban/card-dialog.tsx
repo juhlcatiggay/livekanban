@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COLORS, LIMITS, type Card, type CardPatch } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { COLOR_STYLES } from "./colors";
+import { AssigneesField } from "./assignees";
 import { Markdown } from "./markdown";
 
 /** Text saves are last-writer-wins per field, sent at most every 300 ms while typing. */
@@ -57,7 +58,6 @@ interface Drafts {
   title?: string;
   description?: string;
   labels?: string;
-  assignee?: string;
   dueDate?: string;
 }
 
@@ -69,6 +69,7 @@ interface Drafts {
 export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = false }: CardDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const { queue, flush } = usePatchSender(card.id);
+  const dispatch = useBoard((s) => s.dispatch);
   const setPresence = useBoard((s) => s.setPresence);
   const editors = Object.values(useBoard((s) => s.peers)).filter((p) => p.editing === card.id);
   const [drafts, setDrafts] = useState<Drafts>({});
@@ -76,7 +77,10 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
   const title = drafts.title ?? card.title;
   const description = drafts.description ?? card.description;
   const labels = drafts.labels ?? card.labels.join(", ");
-  const assignee = drafts.assignee ?? card.assignee;
+  // Assignees change in whole steps (add/remove a chip), so they follow the card directly.
+  const me = useBoard((s) => s.me);
+  const peerNames = Object.values(useBoard((s) => s.peers)).map((p) => p.name);
+  const suggestions = [...new Set([...(me ? [me.name] : []), ...peerNames])];
   const dueDate = drafts.dueDate ?? card.dueDate ?? "";
   // Cards with a description open showing it rendered; empty ones open ready to write.
   /** The description shows rendered; Edit switches to the Markdown source until Done. */
@@ -180,21 +184,19 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, readOnly = fa
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Assignee
-            <input
-              value={assignee}
+        <div className="flex flex-col gap-1 text-sm font-medium">
+          <span id={`assignees-${card.id}`}>Assignees</span>
+          <div role="group" aria-labelledby={`assignees-${card.id}`}>
+            <AssigneesField
+              value={card.assignees}
+              onChange={(assignees) => dispatch({ kind: "card.update", id: card.id, patch: { assignees } })}
+              suggestions={suggestions}
               readOnly={readOnly}
-              maxLength={LIMITS.assignee}
-              placeholder="Name"
-              onChange={(e) => {
-                draft("assignee", e.target.value);
-                queue({ assignee: e.target.value });
-              }}
-              className={`${field} font-normal`}
             />
-          </label>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
             Due date
             <input

@@ -21,8 +21,8 @@ import {
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. */
-export const SCHEMA_VERSION = 4;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). */
+export const SCHEMA_VERSION = 5;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
@@ -49,7 +49,8 @@ interface CardRow extends Row {
   description: string;
   color: string | null;
   labels: string;
-  assignee: string;
+  /** JSON array (schema v5); the old single `assignee` column is kept but unused. */
+  assignees: string;
   due_date: string | null;
   updated_at: number;
   updated_by: string;
@@ -93,7 +94,7 @@ const toCard = (r: CardRow): Card => ({
   description: r.description,
   color: r.color as Color | null,
   labels: JSON.parse(r.labels) as string[],
-  assignee: r.assignee,
+  assignees: JSON.parse(r.assignees) as string[],
   dueDate: r.due_date,
   updatedAt: r.updated_at,
   updatedBy: r.updated_by,
@@ -163,6 +164,7 @@ export class BoardStorage {
           color TEXT,
           labels TEXT NOT NULL DEFAULT '[]',
           assignee TEXT NOT NULL DEFAULT '',
+          assignees TEXT NOT NULL DEFAULT '[]',
           due_date TEXT,
           updated_at INTEGER NOT NULL,
           updated_by TEXT NOT NULL,
@@ -190,8 +192,23 @@ export class BoardStorage {
           at INTEGER NOT NULL
         );
       `);
+      // v5: multiple assignees. Boards created earlier get the column and keep their single assignee.
+      if (this.addColumn("cards", "assignees", "TEXT NOT NULL DEFAULT '[]'")) {
+        this.sql.exec("UPDATE cards SET assignees = json_array(assignee) WHERE assignee != ''");
+      }
       this.setMeta("schema_version", String(SCHEMA_VERSION));
     });
+  }
+
+  /** Adds a column to an existing table if it's missing. Returns true if it was added. */
+  private addColumn(table: string, column: string, definition: string): boolean {
+    const exists = this.sql
+      .exec<{ name: string }>(`SELECT name FROM pragma_table_info('${table}')`)
+      .toArray()
+      .some((c) => c.name === column);
+    if (exists) return false;
+    this.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    return true;
   }
 
   needsMigration(): boolean {
@@ -704,7 +721,7 @@ export class BoardStorage {
     if (patch.description !== undefined) sets.push("description = ?"), args.push(patch.description);
     if (patch.color !== undefined) sets.push("color = ?"), args.push(patch.color);
     if (patch.labels !== undefined) sets.push("labels = ?"), args.push(JSON.stringify(patch.labels));
-    if (patch.assignee !== undefined) sets.push("assignee = ?"), args.push(patch.assignee);
+    if (patch.assignees !== undefined) sets.push("assignees = ?"), args.push(JSON.stringify(patch.assignees));
     if (patch.dueDate !== undefined) sets.push("due_date = ?"), args.push(patch.dueDate);
     this.sql.exec(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
   }

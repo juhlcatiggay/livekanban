@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Card, Peer } from "@livekanban/protocol";
+import { AssigneeAvatars } from "./assignees";
 import { COLOR_STYLES } from "./colors";
 
 const dueFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -27,9 +28,9 @@ export function CardFace({ card, lifted = false }: { card: Card; lifted?: boolea
           ))}
         </ul>
       )}
-      {(card.assignee || card.dueDate || card.description) && (
+      {(card.assignees.length > 0 || card.dueDate || card.description) && (
         <div className="mt-2 flex items-center gap-3 text-xs text-stone-500">
-          {card.assignee && <span className="truncate">@{card.assignee}</span>}
+          <AssigneeAvatars names={card.assignees} />
           {card.dueDate && (
             <span className={overdue ? "font-medium text-red-600 dark:text-red-400" : ""}>
               Due {dueFormat.format(new Date(`${card.dueDate}T00:00:00Z`))}
