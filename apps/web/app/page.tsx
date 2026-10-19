@@ -10,7 +10,7 @@ export default function Home() {
           A kanban board you can share by link. See everyone&apos;s cursors live. No signup.
         </p>
       </div>
-      <CreateBoardButton />
+      <CreateBoardButton allowImport />
       <RecentBoards />
       <p className="max-w-md text-center text-xs text-stone-500">
         Anyone with a board&apos;s link can view and edit it. Boards are deleted after 60 days without a visit.

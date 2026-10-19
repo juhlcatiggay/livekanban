@@ -6,6 +6,7 @@ import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store
 import { getIdentity } from "@/lib/identity";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
+import { BoardActions } from "./board-actions";
 import { InlineEdit } from "./kanban/inline-edit";
 import { BulletinBoard } from "./bulletin/bulletin-board";
 import { PinnedBanner } from "./bulletin/pinned-banner";
@@ -24,6 +25,7 @@ export function Board({ boardId }: { boardId: string }) {
   useEffect(() => connectBoard(boardId, getIdentity()), [boardId]);
   useCursorSender();
   useActivity();
+  useUndoShortcuts();
 
   if (status === "expired") return <ExpiredBoard />;
   if (status === "full") {
@@ -48,6 +50,7 @@ export function Board({ boardId }: { boardId: string }) {
           )}
         </div>
         <div className="flex items-center gap-4">
+          {board && <BoardActions board={board} />}
           <PresenceBar />
           <CopyLinkButton />
         </div>
@@ -70,9 +73,49 @@ export function Board({ boardId }: { boardId: string }) {
       <ErrorToast />
       <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
         <KeptUntil />
-        <ConnectionInfo status={status} />
+        <span className="flex items-center gap-4">
+          <ReportLink boardId={boardId} />
+          <ConnectionInfo status={status} />
+        </span>
       </footer>
     </div>
+  );
+}
+
+/** Ctrl/Cmd+Z undoes your last change, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo. */
+function useUndoShortcuts() {
+  const undo = useBoard((s) => s.undo);
+  const redo = useBoard((s) => s.redo);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("input, textarea, [contenteditable=true]")) return;
+      const key = e.key.toLowerCase();
+      if (key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+}
+
+/** Anonymous boards will eventually host content that must be taken down; this is the way to ask. */
+function ReportLink({ boardId }: { boardId: string }) {
+  const email = process.env.NEXT_PUBLIC_ABUSE_EMAIL;
+  if (!email) return null;
+  const subject = encodeURIComponent(`Report board ${boardId}`);
+  const body = encodeURIComponent(`Board ID: ${boardId}\n\nWhat's wrong:\n`);
+  return (
+    <a href={`mailto:${email}?subject=${subject}&body=${body}`} className="hover:text-stone-800 hover:underline dark:hover:text-stone-200">
+      Report this board
+    </a>
   );
 }
 
