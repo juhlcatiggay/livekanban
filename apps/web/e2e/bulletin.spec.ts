@@ -183,3 +183,41 @@ test("deleting a note can be undone", async ({ browser }) => {
   await ada.reload();
   await expect(note(ada, "Keep me")).toBeVisible();
 });
+
+test("the bulletin can be a newest-first card stack, and the choice is remembered", async ({ browser }, info) => {
+  const ada = await visitor(browser, "Ada");
+  await createBoard(ada);
+  await openBulletin(ada);
+  await addNote(ada, "Older note");
+  await addNote(ada, "Newer note");
+
+  await ada.getByRole("button", { name: "Card stack" }).click();
+  const stack = ada.getByRole("list", { name: "Notes, newest first" });
+  const items = stack.locator(":scope > li");
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText("Newer note");
+  await expect(items.nth(1)).toContainText("Older note");
+  await expect(items.nth(0)).toContainText(/#2.*Created/);
+  await expect(items.nth(1)).toContainText(/#1.*Created/);
+  await expect(ada.getByRole("group", { name: "Zoom" })).toHaveCount(0);
+
+  // Editing in place.
+  await items.nth(1).getByRole("button", { name: "Edit" }).click();
+  await ada.getByLabel("Note text").fill("Older note, **updated**");
+  await ada.getByLabel("Note text").press("Escape");
+  await expect(items.nth(1).locator("strong")).toHaveText("updated");
+
+  // A new note opens ready to type, at the top.
+  await ada.getByRole("button", { name: "+ Add note" }).click();
+  await ada.getByLabel("Note text").fill("Newest note");
+  await ada.getByLabel("Note text").press("Escape");
+  await expect(items.nth(0)).toContainText("Newest note");
+  await ada.screenshot({ path: info.outputPath("card-stack.png") });
+
+  // The layout is per viewer and survives a reload; switching back shows the canvas.
+  await ada.reload();
+  await expect(ada.getByRole("list", { name: "Notes, newest first" })).toBeVisible();
+  await ada.getByRole("button", { name: "Sticky notes" }).click();
+  await expect(ada.getByLabel("Bulletin canvas")).toBeVisible();
+  await expect(note(ada, "Newest note")).toBeVisible();
+});

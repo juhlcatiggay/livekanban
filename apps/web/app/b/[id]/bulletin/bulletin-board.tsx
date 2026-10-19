@@ -8,7 +8,9 @@ import { clearJump, revealAndShake, useJump } from "@/lib/jump";
 import { indexPresence } from "@/lib/presence-index";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
+import { setBulletinLayout, useBulletinLayout, type BulletinLayout } from "@/lib/bulletin-layout";
 import { Minimap } from "./minimap";
+import { NoteStack } from "./note-stack";
 import { CanvasNote } from "./note";
 import { clampToCanvas, freeNoteSpot } from "./placement";
 
@@ -34,6 +36,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   // State rather than a ref so the minimap re-subscribes once the element exists.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const full = notes.length >= LIMITS.notes;
+  const layout = useBulletinLayout();
 
   // A #mention click asks to show a note: glide to it and shake it.
   useEffect(() => {
@@ -58,7 +61,12 @@ export function BulletinBoard({ board }: { board: BoardData }) {
   /** New notes go near the middle of what this viewer can currently see. */
   const addNoteInView = () => {
     const el = scroller;
-    if (!el) return;
+    if (!el || layout === "stack") {
+      // The card stack has no visible canvas area: put it where it won't cover other notes.
+      const spot = freeNoteSpot(board);
+      createNote(spot.x, spot.y);
+      return;
+    }
     const cx = (el.scrollLeft + el.clientWidth / 2) / zoom - NOTE_SIZE.defaultW / 2;
     const cy = (el.scrollTop + el.clientHeight / 2) / zoom - NOTE_SIZE.defaultH / 2;
     const spot = freeNoteSpot(board, clampToCanvas(cx, cy, NOTE_SIZE.defaultW, NOTE_SIZE.defaultH));
@@ -89,66 +97,104 @@ export function BulletinBoard({ board }: { board: BoardData }) {
             >
               + Add note
             </button>
-            <span className="text-xs text-stone-500">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+            {layout === "canvas" && (
+              <span className="hidden text-xs text-stone-500 lg:inline">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+            )}
           </>
         ) : (
           <span className="text-xs text-stone-500">The host has made the bulletin board view-only.</span>
         )}
-        <div className="ml-auto flex items-center gap-1" role="group" aria-label="Zoom">
-          {ZOOMS.map((z) => (
+        <div className="ml-auto flex items-center gap-0.5 rounded-lg bg-stone-100 p-0.5 dark:bg-stone-800" role="group" aria-label="Layout">
+          {(
+            [
+              ["canvas", "Sticky notes"],
+              ["stack", "Card stack"],
+            ] as [BulletinLayout, string][]
+          ).map(([value, label]) => (
             <button
-              key={z}
+              key={value}
               type="button"
-              aria-pressed={zoom === z}
-              onClick={() => setZoom(z)}
-              className={`rounded px-2 py-0.5 tabular-nums ${zoom === z ? "bg-stone-200 font-semibold dark:bg-stone-700" : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"}`}
+              aria-pressed={layout === value}
+              onClick={() => setBulletinLayout(value)}
+              className={`rounded-md px-2.5 py-0.5 text-sm ${
+                layout === value ? "bg-white font-semibold shadow-sm dark:bg-stone-700" : "text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+              }`}
             >
-              {z * 100}%
+              {label}
             </button>
           ))}
         </div>
+        {layout === "canvas" && (
+          <div className="flex items-center gap-1" role="group" aria-label="Zoom">
+            {ZOOMS.map((z) => (
+              <button
+                key={z}
+                type="button"
+                aria-pressed={zoom === z}
+                onClick={() => setZoom(z)}
+                className={`rounded px-2 py-0.5 tabular-nums ${zoom === z ? "bg-stone-200 font-semibold dark:bg-stone-700" : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"}`}
+              >
+                {z * 100}%
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="relative flex min-h-0 flex-1">
-        <Minimap notes={notes} scroller={scroller} zoom={zoom} />
-        <div ref={setScroller} className="relative min-h-0 flex-1 overflow-auto bg-stone-100 dark:bg-stone-900" data-presence-area>
-          <div className="relative" style={{ width: CANVAS.width * zoom, height: CANVAS.height * zoom }}>
-            <div
-              data-anchor="canvas"
-              aria-label="Bulletin canvas"
-              className="absolute left-0 top-0 origin-top-left bg-white dark:bg-stone-950"
-              style={{
-                width: CANVAS.width,
-                height: CANVAS.height,
-                transform: `scale(${zoom})`,
-                backgroundImage: "radial-gradient(circle, rgba(120,113,108,0.25) 1px, transparent 1px)",
-                backgroundSize: "24px 24px",
-              }}
-              onDoubleClick={(e) => {
-                if (!canEdit || e.target !== e.currentTarget) return;
-                const r = e.currentTarget.getBoundingClientRect();
-                createNote((e.clientX - r.left) / zoom - NOTE_SIZE.defaultW / 2, (e.clientY - r.top) / zoom - 20);
-              }}
-            >
-              {notes.map((note) => (
-                <CanvasNote
-                  key={note.id}
-                  note={note}
-                  zoom={zoom}
-                  columns={columns}
-                  lastCardPosition={(columnId) => cardsIn[columnId]?.at(-1)?.position ?? null}
-                  pinned={board.pinnedNoteId === note.id}
-                  heldBy={presence.heldBy[note.id]}
-                  editors={presence.editors[note.id]}
-                  startEditing={note.id === justCreated}
-                  onEditingDone={() => setJustCreated(null)}
-                  onDelete={deleteNote}
-                  canEdit={canEdit}
-                />
-              ))}
+      {layout === "stack" ? (
+        <NoteStack
+          notes={notes}
+          columns={columns}
+          lastCardPosition={(columnId) => cardsIn[columnId]?.at(-1)?.position ?? null}
+          pinnedNoteId={board.pinnedNoteId}
+          editors={presence.editors}
+          canEdit={canEdit}
+          justCreated={justCreated}
+          onEditingDone={() => setJustCreated(null)}
+          onDelete={deleteNote}
+        />
+      ) : (
+        <div className="relative flex min-h-0 flex-1">
+          <Minimap notes={notes} scroller={scroller} zoom={zoom} />
+          <div ref={setScroller} className="relative min-h-0 flex-1 overflow-auto bg-stone-100 dark:bg-stone-900" data-presence-area>
+            <div className="relative" style={{ width: CANVAS.width * zoom, height: CANVAS.height * zoom }}>
+              <div
+                data-anchor="canvas"
+                aria-label="Bulletin canvas"
+                className="absolute left-0 top-0 origin-top-left bg-white dark:bg-stone-950"
+                style={{
+                  width: CANVAS.width,
+                  height: CANVAS.height,
+                  transform: `scale(${zoom})`,
+                  backgroundImage: "radial-gradient(circle, rgba(120,113,108,0.25) 1px, transparent 1px)",
+                  backgroundSize: "24px 24px",
+                }}
+                onDoubleClick={(e) => {
+                  if (!canEdit || e.target !== e.currentTarget) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  createNote((e.clientX - r.left) / zoom - NOTE_SIZE.defaultW / 2, (e.clientY - r.top) / zoom - 20);
+                }}
+              >
+                {notes.map((note) => (
+                  <CanvasNote
+                    key={note.id}
+                    note={note}
+                    zoom={zoom}
+                    columns={columns}
+                    lastCardPosition={(columnId) => cardsIn[columnId]?.at(-1)?.position ?? null}
+                    pinned={board.pinnedNoteId === note.id}
+                    heldBy={presence.heldBy[note.id]}
+                    editors={presence.editors[note.id]}
+                    startEditing={note.id === justCreated}
+                    onEditingDone={() => setJustCreated(null)}
+                    onDelete={deleteNote}
+                    canEdit={canEdit}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

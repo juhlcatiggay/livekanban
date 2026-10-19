@@ -19,7 +19,7 @@ import { Markdown } from "../kanban/markdown";
 import { clampToCanvas } from "./placement";
 
 /** Sticky-note paper colors; text stays dark so notes read the same in both themes. */
-const PAPER: Record<Color, string> = {
+export const PAPER: Record<Color, string> = {
   gray: "bg-stone-100 border-stone-300",
   red: "bg-red-100 border-red-300",
   amber: "bg-amber-100 border-amber-300",
@@ -53,6 +53,59 @@ export function NoteFace({ note, lifted = false, className = "" }: { note: Note;
   );
 }
 
+/**
+ * Editing a note's text, shared by the sticky-note canvas and the card stack:
+ * a local draft saved every 300 ms, "<you> is editing" presence while open,
+ * and Escape or leaving the field to finish.
+ */
+export function useNoteEditor(note: Note, { start = false, canEdit = true, onDone }: { start?: boolean; canEdit?: boolean; onDone?: () => void }) {
+  const dispatch = useBoard((s) => s.dispatch);
+  const setPresence = useBoard((s) => s.setPresence);
+  const [editing, setEditing] = useState(start && canEdit);
+  const [draft, setDraft] = useState<string | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (!editing) return;
+    setPresence({ editing: note.id });
+    return () => setPresence({ editing: null });
+  }, [editing, note.id, setPresence]);
+
+  const flushText = useCallback(
+    (text: string | null) => {
+      clearTimeout(saveTimer.current);
+      if (text !== null && text !== note.text) dispatch({ kind: "note.update", id: note.id, patch: { text } });
+    },
+    [dispatch, note.id, note.text],
+  );
+
+  const finish = () => {
+    flushText(draft);
+    setDraft(null);
+    setEditing(false);
+    onDone?.();
+  };
+
+  return {
+    editing,
+    open: () => canEdit && setEditing(true),
+    textareaProps: {
+      autoFocus: true,
+      "aria-label": "Note text",
+      value: draft ?? note.text,
+      maxLength: LIMITS.description,
+      onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const text = e.target.value;
+        setDraft(text);
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => flushText(text), SAVE_DEBOUNCE_MS);
+      },
+      onBlur: finish,
+      onKeyDown: (e: React.KeyboardEvent) => e.key === "Escape" && finish(),
+    },
+  };
+}
+
 interface CanvasNoteProps {
   note: Note;
   zoom: number;
@@ -73,7 +126,6 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
   const dispatch = useBoard((s) => s.dispatch);
   const lockCard = useBoard((s) => s.lockCard);
   const unlockCard = useBoard((s) => s.unlockCard);
-  const setPresence = useBoard((s) => s.setPresence);
 
   /** Live position while dragging, in canvas pixels. */
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
@@ -81,31 +133,8 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
   /** Live size while resizing. */
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
-  const [editing, setEditing] = useState(startEditing && canEdit);
-  const [draft, setDraft] = useState<string | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  // Others see "<you> is editing" while the text editor is open.
-  useEffect(() => {
-    if (!editing) return;
-    setPresence({ editing: note.id });
-    return () => setPresence({ editing: null });
-  }, [editing, note.id, setPresence]);
-
-  const flushText = useCallback(
-    (text: string | null) => {
-      clearTimeout(saveTimer.current);
-      if (text !== null && text !== note.text) dispatch({ kind: "note.update", id: note.id, patch: { text } });
-    },
-    [dispatch, note.id, note.text],
-  );
-
-  const finishEditing = () => {
-    flushText(draft);
-    setDraft(null);
-    setEditing(false);
-    onEditingDone?.();
-  };
+  const textEditor = useNoteEditor(note, { start: startEditing, canEdit, onDone: onEditingDone });
+  const editing = textEditor.editing;
 
   const move = (x: number, y: number) => {
     const p = clampToCanvas(x, y, note.w, note.h);
@@ -176,7 +205,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         dragStart.current = null;
         setDrag(null);
       }}
-      onDoubleClick={() => canEdit && setEditing(true)}
+      onDoubleClick={textEditor.open}
       onKeyDown={(e) => {
         if (!canEdit || editing || e.target !== e.currentTarget) return;
         const step = e.shiftKey ? NUDGE * 5 : NUDGE;
@@ -187,24 +216,13 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          setEditing(true);
+          textEditor.open();
         }
       }}
     >
       {editing ? (
         <textarea
-          autoFocus
-          aria-label="Note text"
-          value={draft ?? note.text}
-          maxLength={LIMITS.description}
-          onChange={(e) => {
-            const text = e.target.value;
-            setDraft(text);
-            clearTimeout(saveTimer.current);
-            saveTimer.current = setTimeout(() => flushText(text), SAVE_DEBOUNCE_MS);
-          }}
-          onBlur={finishEditing}
-          onKeyDown={(e) => e.key === "Escape" && finishEditing()}
+          {...textEditor.textareaProps}
           className={`h-full w-full resize-none rounded-sm border p-3 text-sm text-stone-900 shadow outline-none ${PAPER[note.color]}`}
         />
       ) : (
@@ -217,7 +235,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
       )}
       {editor && <EditingBadge peers={editors} />}
       {canEdit && !editing && (
-        <NoteMenu note={note} pinned={pinned} columns={columns} lastCardPosition={lastCardPosition} onEdit={() => setEditing(true)} onDelete={() => onDelete(note)} />
+        <NoteMenu note={note} pinned={pinned} columns={columns} lastCardPosition={lastCardPosition} onEdit={textEditor.open} onDelete={() => onDelete(note)} />
       )}
       {canEdit && (
         <div
@@ -247,7 +265,7 @@ export function CanvasNote({ note, zoom, columns, lastCardPosition, pinned, held
   );
 }
 
-function NoteMenu({
+export function NoteMenu({
   note,
   pinned,
   columns,
