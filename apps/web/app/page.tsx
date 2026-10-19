@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CreateBoardButton } from "./create-board-button";
 import { Icon, type IconName } from "./icons";
 import { MyBoards } from "./recent-boards";
+import { ThemeToggle } from "./theme-toggle";
 import { TryBoard } from "./try-board";
 
 const FEATURES: { icon: IconName; title: string; body: string }[] = [
@@ -27,13 +28,14 @@ export default function Home() {
           <Link href="/" className="press text-[15px] font-semibold">
             LiveKanban
           </Link>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
             <a href="#features" className="hidden text-gray-600 hover:text-gray-900 sm:inline dark:text-gray-400 dark:hover:text-white">
               Features
             </a>
-            <a href="#my-boards" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+            <a href="#my-boards" className="hidden whitespace-nowrap text-gray-600 hover:text-gray-900 min-[420px]:inline dark:text-gray-400 dark:hover:text-white">
               My boards
             </a>
+            <ThemeToggle />
             <CreateBoardButton label="Create board" size="small" />
           </div>
         </nav>

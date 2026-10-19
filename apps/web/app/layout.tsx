@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { THEME_SCRIPT } from "@/lib/theme-script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,10 +14,17 @@ export const viewport: Viewport = {
   ],
 };
 
-/** The system font (SF Pro on Apple devices) is set in globals.css; no web font to download. */
+/**
+ * The system font (SF Pro on Apple devices) is set in globals.css; no web font
+ * to download. The inline script sets data-theme before the first paint, so
+ * <html> differs from the server render on purpose (suppressHydrationWarning).
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );

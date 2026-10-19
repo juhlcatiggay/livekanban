@@ -121,14 +121,17 @@ export function KanbanBoard({ board }: { board: BoardData }) {
 
   const selection = useSelection((s) => s.ids);
   /** Selected cards that still exist, in board order (column, then position). */
+  // Search and filters hide cards; bulk actions only ever touch cards you can see.
+  const filter = useCardFilter();
+  const filtering = isFiltering(filter);
   const selected = useMemo(() => {
     const columnIndex = new Map(columns.map((c, i) => [c.id, i]));
     return [...selection]
       .map((id) => board.cards[id])
-      .filter((c) => c && columnIndex.has(c.columnId))
+      .filter((c) => c && columnIndex.has(c.columnId) && (!filtering || matchesFilter(c, filter)))
       .sort((a, b) => columnIndex.get(a.columnId)! - columnIndex.get(b.columnId)! || byPosition(a, b))
       .map((c) => c.id);
-  }, [selection, board.cards, columns]);
+  }, [selection, board.cards, columns, filter, filtering]);
   /** The other selected cards travelling with the one being dragged; empty for a single-card drag. */
   const companionsRef = useRef<string[]>([]);
   const [dragCount, setDragCount] = useState(1);
@@ -242,9 +245,7 @@ export function KanbanBoard({ board }: { board: BoardData }) {
   const offerUndo = useUndo((s) => s.offer);
 
   const order = dragOrder ?? baseOrder;
-  // Search and filters hide cards; drags still work on the full order, so hidden cards keep their places.
-  const filter = useCardFilter();
-  const filtering = isFiltering(filter);
+  // Drags still work on the full order, so hidden cards keep their places.
 
   /**
    * Keyboard moves are exact rather than geometric: cards swap with the

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DEFAULT_PERMISSIONS, PASSWORD, PERMISSION_LABELS, toExport, type Permission } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
+import { copyText } from "@/lib/clipboard";
 import { confirmAction } from "@/lib/confirm";
 import { downloadFile, slug } from "@/lib/download";
 import { getHostKey, hostLink } from "@/lib/host";
@@ -39,7 +40,7 @@ export function HostMenu({ boardId }: { boardId: string }) {
   const copyHostLink = async () => {
     const key = getHostKey(boardId);
     if (!key) return;
-    await navigator.clipboard.writeText(hostLink(boardId, key));
+    if (!(await copyText(hostLink(boardId, key)))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

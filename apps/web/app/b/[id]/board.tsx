@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store";
 import { claimHostFromUrl, getHostKey } from "@/lib/host";
 import { getIdentity } from "@/lib/identity";
+import { copyText } from "@/lib/clipboard";
 import { useCan } from "@/lib/use-can";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
+import { ThemeToggle } from "../../theme-toggle";
 import { BoardActions } from "./board-actions";
 import { ConfirmDialog } from "./confirm-dialog";
 import { HistoryButton } from "./history";
@@ -49,8 +51,9 @@ export function Board({ boardId }: { boardId: string }) {
   return (
     <div className="flex h-dvh flex-col bg-gray-100 dark:bg-black">
       {/* One toolbar, like a Mac app: where you are on the left, the views in the middle, actions on the right. */}
-      <header className="material material-edge relative z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1">
+      {/* Wide screens: one row (name · views · actions). Narrow: name and actions, then the views on their own row. */}
+      <header className="material material-edge relative z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2 lg:grid lg:grid-cols-[1fr_auto_1fr]">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <Link href="/" aria-label="LiveKanban home" title="All boards" className="press shrink-0 rounded-md px-1.5 py-1 text-[15px] font-semibold hover:bg-black/5 dark:hover:bg-white/10">
             ‹ LiveKanban
           </Link>
@@ -65,8 +68,10 @@ export function Board({ boardId }: { boardId: string }) {
             />
           )}
         </div>
-        <Tabs view={view} noteCount={board ? Object.keys(board.notes).length : 0} />
-        <div className="flex items-center justify-end gap-3">
+        <div className="order-last flex w-full justify-center lg:order-none lg:w-auto">
+          <Tabs view={view} noteCount={board ? Object.keys(board.notes).length : 0} />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {board && <HistoryButton />}
           {board && <BoardActions board={board} />}
           <HostMenu boardId={boardId} />
@@ -101,6 +106,7 @@ export function Board({ boardId }: { boardId: string }) {
         <KeptUntil />
         <span className="flex items-center gap-4">
           <ReportLink boardId={boardId} />
+          <ThemeToggle />
           <ConnectionInfo status={status} />
         </span>
       </footer>
@@ -180,7 +186,7 @@ function ErrorToast() {
   return (
     <div role="alert" className="fixed left-1/2 top-16 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full bg-gray-900/90 py-2 pl-4 pr-2 text-[13px] text-white shadow-lg backdrop-blur dark:bg-gray-100/90 dark:text-gray-900">
       <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
-      <span>Change not saved: {error}</span>
+      <span>{error}</span>
       <button type="button" onClick={clearError} aria-label="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-full text-base leading-none hover:bg-white/15 dark:hover:bg-black/10">
         ×
       </button>
@@ -194,7 +200,7 @@ function CopyLinkButton() {
     <button
       type="button"
       onClick={async () => {
-        await navigator.clipboard.writeText(window.location.href);
+        if (!(await copyText(window.location.href))) return;
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}

@@ -56,10 +56,14 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
   const [draft, setDraft] = useState("");
   const full = value.length >= LIMITS.assignees;
 
-  const add = (raw: string) => {
-    const name = raw.trim().slice(0, LIMITS.assignee);
-    if (!name || full || value.some((v) => v.toLowerCase() === name.toLowerCase())) return;
-    onChange([...value, name]);
+  /** Adds every name in `raw` in one change (pasting "Ada, Bob, Cy" keeps all three). */
+  const add = (...raw: string[]) => {
+    const next = [...value];
+    for (const r of raw) {
+      const name = r.trim().slice(0, LIMITS.assignee);
+      if (name && next.length < LIMITS.assignees && !next.some((v) => v.toLowerCase() === name.toLowerCase())) next.push(name);
+    }
+    if (next.length !== value.length) onChange(next);
   };
   const remove = (name: string) => onChange(value.filter((v) => v !== name));
   const offered = suggestions.filter((s) => !value.some((v) => v.toLowerCase() === s.toLowerCase())).slice(0, 6);
@@ -96,7 +100,7 @@ export function AssigneesField({ value, onChange, suggestions, readOnly = false 
             onChange={(e) => {
               const v = e.target.value;
               if (v.includes(",")) {
-                v.split(",").slice(0, -1).forEach(add);
+                add(...v.split(",").slice(0, -1));
                 setDraft(v.split(",").at(-1) ?? "");
               } else setDraft(v);
             }}

@@ -36,6 +36,8 @@ export const BACKUPS_KEPT = 7;
 const MAX_BACKUP_CHARS = 1_900_000;
 /** ops_log keeps this many recent ops for reconnect replay. */
 export const OPS_KEPT = 2000;
+/** Browsers whose name a board remembers. */
+export const MAX_MEMBERS = 5000;
 
 type Row = Record<string, SqlStorageValue>;
 
@@ -358,7 +360,11 @@ export class BoardStorage {
     const taken = new Set(this.sql.exec<{ name: string }>("SELECT name FROM members").toArray().map((m) => m.name.toLowerCase()));
     const name = wanted.custom && !taken.has(wanted.name.toLowerCase()) ? wanted.name : pickName(taken);
     const color = wanted.custom ? wanted.color : this.leastUsedColor();
-    this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    // Every new browser adds a row; past the cap, names are still unique but no longer remembered,
+    // so nobody can grow a board's database without limit by connecting with fresh client IDs.
+    if (taken.size < MAX_MEMBERS) {
+      this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    }
     return { name, color };
   }
 
