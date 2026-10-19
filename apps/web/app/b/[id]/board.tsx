@@ -37,6 +37,7 @@ export function Board({ boardId }: { boardId: string }) {
   useUndoShortcuts();
 
   if (status === "expired") return <ExpiredBoard />;
+  if (status === "deleted") return <DeletedBoard />;
   if (status === "full") {
     return <Notice title="This board is full" body="Too many people are on this board right now. Try again soon." />;
   }
@@ -208,6 +209,7 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   open: "Live",
   reconnecting: "Reconnecting…",
   expired: "Expired",
+  deleted: "Deleted",
   full: "Board full",
 };
 
@@ -224,7 +226,16 @@ function ConnectionInfo({ status }: { status: ConnectionStatus }) {
 
 function ExpiredBoard() {
   return (
-    <Notice title="This board expired" body="Boards are deleted after 60 days without a visit or edit.">
+    <Notice title="This board expired" body="Boards are deleted after 60 days without a visit or edit, or when their host deletes them.">
+      <CreateBoardButton label="Create a new board" />
+    </Notice>
+  );
+}
+
+function DeletedBoard() {
+  const by = useBoard((s) => s.deletedBy);
+  return (
+    <Notice title="This board was deleted" body={`${by ? `${by}, the host,` : "The host"} deleted this board and everything on it.`}>
       <CreateBoardButton label="Create a new board" />
     </Notice>
   );

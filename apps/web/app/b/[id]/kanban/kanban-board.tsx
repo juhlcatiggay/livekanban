@@ -21,16 +21,20 @@ import {
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   LIMITS,
+  byPosition,
   cardsByColumn,
   positionBetween,
+  positionsBetween,
   sortedColumns,
   type BoardData,
   type Column,
+  type Op,
 } from "@livekanban/protocol";
 import { newItemId, useBoard } from "@/lib/board-store";
 import { confirmAction } from "@/lib/confirm";
 import { SHAKE_MS, clearJump, revealAndShake, useJump } from "@/lib/jump";
 import { indexPresence } from "@/lib/presence-index";
+import { clearSelection, selectCards, useSelection } from "@/lib/selection";
 import { useCan } from "@/lib/use-can";
 import { useUndo } from "@/lib/undo";
 import { CardFace } from "./card";
@@ -74,8 +78,12 @@ function neighbours(ids: string[], i: number, positionOf: (id: string) => string
 const fitsBetween = (pos: string, before: string | null | undefined, after: string | null | undefined) =>
   (!before || before < pos) && (!after || pos < after);
 
+/** What a box selection must not start on: cards, controls and dialogs. */
+const NOT_EMPTY_SPACE = 'li[aria-roledescription="card"], button, a, input, textarea, select, summary, details, form, dialog, [role="dialog"], [role="toolbar"]';
+
 export function KanbanBoard({ board }: { board: BoardData }) {
   const dispatch = useBoard((s) => s.dispatch);
+  const dispatchAll = useBoard((s) => s.dispatchAll);
   const lockCard = useBoard((s) => s.lockCard);
   const unlockCard = useBoard((s) => s.unlockCard);
   const peers = useBoard((s) => s.peers);
@@ -109,6 +117,100 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     columnIdsRef.current = columns.map((c) => c.id);
   }, [columns]);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+
+  const selection = useSelection((s) => s.ids);
+  /** Selected cards that still exist, in board order (column, then position). */
+  const selected = useMemo(() => {
+    const columnIndex = new Map(columns.map((c, i) => [c.id, i]));
+    return [...selection]
+      .map((id) => board.cards[id])
+      .filter((c) => c && columnIndex.has(c.columnId))
+      .sort((a, b) => columnIndex.get(a.columnId)! - columnIndex.get(b.columnId)! || byPosition(a, b))
+      .map((c) => c.id);
+  }, [selection, board.cards, columns]);
+  /** The other selected cards travelling with the one being dragged; empty for a single-card drag. */
+  const companionsRef = useRef<string[]>([]);
+  const [dragCount, setDragCount] = useState(1);
+
+  // Box selection: drag on empty space to draw a box; cards it touches are selected.
+  const boardRef = useRef<HTMLDivElement>(null);
+  const boxStart = useRef<{ x: number; y: number; base: Set<string>; moved: boolean } | null>(null);
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  const onBoxDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || e.pointerType === "touch" || (e.target as HTMLElement).closest(NOT_EMPTY_SPACE)) return;
+    // No text selection while drawing the box. That also stops the click from blurring a field, so do it here.
+    e.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    boxStart.current = { x: e.clientX, y: e.clientY, base: new Set(additive ? selected : []), moved: false };
+  };
+  const onBoxMove = (e: React.PointerEvent) => {
+    const start = boxStart.current;
+    if (!start) return;
+    if (!start.moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 4) return;
+    start.moved = true;
+    const left = Math.min(start.x, e.clientX);
+    const top = Math.min(start.y, e.clientY);
+    const right = Math.max(start.x, e.clientX);
+    const bottom = Math.max(start.y, e.clientY);
+    setBox({ left, top, width: right - left, height: bottom - top });
+    const hits = new Set(start.base);
+    for (const el of boardRef.current?.querySelectorAll<HTMLElement>('li[aria-roledescription="card"][data-anchor]') ?? []) {
+      const r = el.getBoundingClientRect();
+      if (r.right > left && r.left < right && r.bottom > top && r.top < bottom) hits.add(el.dataset.anchor!);
+    }
+    selectCards(hits);
+  };
+  const onBoxEnd = () => {
+    const start = boxStart.current;
+    boxStart.current = null;
+    setBox(null);
+    // A plain click on empty space clears the selection.
+    if (start && !start.moved && !start.base.size) clearSelection();
+  };
+
+  const deleteSelected = async () => {
+    if (!selected.length || !can.editCards) return;
+    const ok = await confirmAction({
+      title: `Delete ${selected.length} card${selected.length === 1 ? "" : "s"}?`,
+      body: "You can undo this, or restore them from the Trash for 7 days.",
+      confirmLabel: `Delete ${selected.length === 1 ? "card" : "cards"}`,
+    });
+    if (!ok) return;
+    dispatchAll(selected.map((id): Op => ({ kind: "card.delete", id })));
+    clearSelection();
+  };
+
+  const moveSelectedTo = (columnId: string) => {
+    if (!selected.length || !can.moveCards) return;
+    const staying = (cardsIn[columnId] ?? []).filter((c) => !selection.has(c.id));
+    const positions = positionsBetween(staying.at(-1)?.position ?? null, null, selected.length);
+    dispatchAll(selected.map((id, i): Op => ({ kind: "card.move", id, columnId, position: positions[i] })));
+  };
+
+  // Escape clears the selection; Delete removes the selected cards.
+  const deleteSelectedRef = useRef(deleteSelected);
+  useEffect(() => {
+    deleteSelectedRef.current = deleteSelected;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!useSelection.getState().ids.size || document.querySelector("dialog[open]")) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      if (e.key === "Escape") clearSelection();
+      else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        void deleteSelectedRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // Leaving the kanban (e.g. to the bulletin) drops the selection.
+  useEffect(() => () => void clearSelection(), []);
 
   // A #mention click (here, from the bulletin or calendar) asks to show a card:
   // close any open card, glide to it, shake it for a second, then open it.
@@ -228,9 +330,18 @@ export function KanbanBoard({ board }: { board: BoardData }) {
     if (isColumnDragId(active.id)) {
       setColumnOrder(columns.map((c) => c.id));
     } else {
-      setDragOrder(baseOrder);
+      const id = String(active.id);
+      // Dragging a selected card takes the rest of the selection along; dragging another card drops the selection.
+      const companions = selection.has(id) ? selected.filter((x) => x !== id) : [];
+      if (!selection.has(id)) clearSelection();
+      companionsRef.current = companions;
+      setDragCount(companions.length + 1);
+      const travelling = new Set(companions);
+      setDragOrder(
+        companions.length ? Object.fromEntries(Object.entries(baseOrder).map(([col, ids]) => [col, ids.filter((x) => !travelling.has(x))])) : baseOrder,
+      );
       // Others see the card lift and follow our cursor; the room refuses a second holder.
-      lockCard(String(active.id));
+      lockCard(id);
     }
   };
 
@@ -253,6 +364,8 @@ export function KanbanBoard({ board }: { board: BoardData }) {
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     const finalOrder = dragOrderRef.current;
     const finalColumns = columnOrderRef.current;
+    const companions = companionsRef.current;
+    companionsRef.current = [];
     setActiveId(null);
     setDragOrder(null);
     setColumnOrder(null);
@@ -281,6 +394,13 @@ export function KanbanBoard({ board }: { board: BoardData }) {
       ids = arrayMove(ids, ids.indexOf(card.id), ids.indexOf(String(over.id)));
     }
     const { before, after } = neighbours(ids, ids.indexOf(card.id), (id) => board.cards[id]?.position);
+    if (companions.length) {
+      // The whole selection lands together where the dragged card was dropped, in board order; one undo puts it back.
+      const group = selected.includes(card.id) ? selected : [card.id, ...companions];
+      const positions = positionsBetween(before, after, group.length);
+      dispatchAll(group.map((id, i): Op => ({ kind: "card.move", id, columnId, position: positions[i] })));
+      return release();
+    }
     if (!(columnId === card.columnId && fitsBetween(card.position, before, after))) {
       dispatch({ kind: "card.move", id: card.id, columnId, position: positionBetween(before, after) });
     }
@@ -301,12 +421,22 @@ export function KanbanBoard({ board }: { board: BoardData }) {
         onDragEnd={onDragEnd}
         onDragCancel={({ active }) => {
           if (!isColumnDragId(active.id)) unlockCard(String(active.id));
+          companionsRef.current = [];
           setActiveId(null);
           setDragOrder(null);
           setColumnOrder(null);
         }}
       >
-        <div className="flex flex-1 items-start gap-3 overflow-x-auto p-4" data-anchor="board" data-presence-area>
+        <div
+          ref={boardRef}
+          className="flex flex-1 items-start gap-3 overflow-x-auto p-4"
+          data-anchor="board"
+          data-presence-area
+          onPointerDown={onBoxDown}
+          onPointerMove={onBoxMove}
+          onPointerUp={onBoxEnd}
+          onPointerCancel={onBoxEnd}
+        >
           <SortableContext items={shownColumns.map((c) => columnDragId(c.id))} strategy={horizontalListSortingStrategy}>
             {shownColumns.map((column) => (
               <SortableColumn
@@ -324,13 +454,98 @@ export function KanbanBoard({ board }: { board: BoardData }) {
         </div>
         {/* pointer-events-none so the cursor sender sees the card or column under the overlay. */}
         <DragOverlay className="pointer-events-none">
-          {activeCard && <CardFace card={activeCard} lifted />}
+          {activeCard && (
+            <div className="relative">
+              {dragCount > 1 && (
+                <>
+                  <div className="absolute inset-0 translate-x-2 translate-y-2 rotate-3 rounded-lg border border-stone-200 bg-white shadow dark:border-stone-700 dark:bg-stone-900" />
+                  <div className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2.5deg] rounded-lg border border-stone-200 bg-white shadow dark:border-stone-700 dark:bg-stone-900" />
+                </>
+              )}
+              <CardFace card={activeCard} lifted />
+              {dragCount > 1 && (
+                <span className="absolute -right-2 -top-2 z-10 rounded-full bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white shadow">{dragCount} cards</span>
+              )}
+            </div>
+          )}
           {activeColumn && <ColumnPreview column={activeColumn} count={cardsIn[activeColumn.id]?.length ?? 0} />}
         </DragOverlay>
       </DndContext>
 
+      {box && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed z-30 rounded-sm border border-blue-500 bg-blue-500/10"
+          style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+        />
+      )}
+
+      {selected.length > 0 && (
+        <SelectionBar
+          count={selected.length}
+          columns={columns}
+          canMove={can.moveCards}
+          canDelete={can.editCards}
+          onMove={moveSelectedTo}
+          onDelete={deleteSelected}
+        />
+      )}
+
       {openCardId && <CardDialogFor board={board} cardId={openCardId} onClose={() => setOpenCardId(null)} />}
     </>
+  );
+}
+
+/** Actions for the selected cards; also the keyboard-friendly way to move several at once. */
+function SelectionBar({
+  count,
+  columns,
+  canMove,
+  canDelete,
+  onMove,
+  onDelete,
+}: {
+  count: number;
+  columns: Column[];
+  canMove: boolean;
+  canDelete: boolean;
+  onMove: (columnId: string) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="Selected cards"
+      className="fixed bottom-14 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm shadow-xl dark:border-stone-700 dark:bg-stone-900"
+    >
+      <span className="whitespace-nowrap font-medium">
+        {count} card{count === 1 ? "" : "s"} selected
+      </span>
+      {canMove && (
+        <select
+          aria-label="Move selected cards to column"
+          value=""
+          onChange={(e) => e.target.value && onMove(e.target.value)}
+          className="rounded-md border border-stone-300 bg-transparent px-2 py-1 dark:border-stone-700 dark:bg-stone-900"
+        >
+          <option value="">Move to…</option>
+          {columns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </select>
+      )}
+      {canDelete && (
+        <button type="button" onClick={onDelete} className="rounded-md px-2 py-1 font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950">
+          Delete
+        </button>
+      )}
+      <button type="button" onClick={() => clearSelection()} className="rounded-md px-2 py-1 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800">
+        Clear
+      </button>
+      <span className="hidden whitespace-nowrap text-xs text-stone-400 lg:inline">Drag any selected card to move them all · Esc clears</span>
+    </div>
   );
 }
 

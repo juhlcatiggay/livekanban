@@ -26,9 +26,15 @@ function monthGrid(year: number, month: number): Date[] {
   return Array.from({ length: weeks * 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
 }
 
+/** A card's entry on one day: its due date, or its start date. */
+interface Entry {
+  card: Card;
+  kind: "due" | "start";
+}
+
 /**
- * Cards by due date on a month grid. Click a card to open it; drag it to
- * another day to change its due date. Days and cards are cursor anchors, so
+ * Cards by due date (and start date) on a month grid. Click a card to open it;
+ * drag it to another day to change that date. Days and cards are cursor anchors, so
  * live cursors work here too.
  */
 export function CalendarView({ board }: { board: BoardData }) {
@@ -46,17 +52,21 @@ export function CalendarView({ board }: { board: BoardData }) {
   const days = useMemo(() => monthGrid(month.year, month.month), [month]);
   const columnOrder = useMemo(() => new Map(sortedColumns(board).map((c, i) => [c.id, i])), [board]);
   const byDay = useMemo(() => {
-    const out = new Map<string, Card[]>();
+    const out = new Map<string, Entry[]>();
+    const add = (day: string, entry: Entry) => out.set(day, [...(out.get(day) ?? []), entry]);
     for (const card of Object.values(board.cards)) {
-      if (!card.dueDate) continue;
-      out.set(card.dueDate, [...(out.get(card.dueDate) ?? []), card]);
+      if (card.startDate && card.startDate !== card.dueDate) add(card.startDate, { card, kind: "start" });
+      if (card.dueDate) add(card.dueDate, { card, kind: "due" });
     }
     for (const list of out.values()) {
-      list.sort((a, b) => (columnOrder.get(a.columnId) ?? 0) - (columnOrder.get(b.columnId) ?? 0) || byPosition(a, b));
+      list.sort(
+        (a, b) =>
+          (columnOrder.get(a.card.columnId) ?? 0) - (columnOrder.get(b.card.columnId) ?? 0) || byPosition(a.card, b.card) || a.kind.localeCompare(b.kind),
+      );
     }
     return out;
   }, [board.cards, columnOrder]);
-  const undated = Object.values(board.cards).filter((c) => !c.dueDate).length;
+  const undated = Object.values(board.cards).filter((c) => !c.dueDate && !c.startDate).length;
 
   const shift = (delta: number) =>
     setMonth(({ year, month: m }) => {
@@ -64,9 +74,11 @@ export function CalendarView({ board }: { board: BoardData }) {
       return { year: d.getFullYear(), month: d.getMonth() };
     });
 
-  const reschedule = (cardId: string, day: string) => {
+  const reschedule = (cardId: string, kind: Entry["kind"], day: string) => {
     const card = board.cards[cardId];
-    if (card && card.dueDate !== day) dispatch({ kind: "card.update", id: cardId, patch: { dueDate: day } });
+    if (!card) return;
+    if (kind === "due" && card.dueDate !== day) dispatch({ kind: "card.update", id: cardId, patch: { dueDate: day } });
+    if (kind === "start" && card.startDate !== day) dispatch({ kind: "card.update", id: cardId, patch: { startDate: day } });
   };
 
   return (
@@ -92,8 +104,8 @@ export function CalendarView({ board }: { board: BoardData }) {
           Today
         </button>
         <span className="ml-auto text-xs text-stone-500">
-          {canReschedule ? "Drag a card to another day to change its due date." : "The host has made cards view-only."}
-          {undated > 0 && ` ${undated} card${undated === 1 ? " has" : "s have"} no due date.`}
+          {canReschedule ? "Drag a card to another day to change its date." : "The host has made cards view-only."}
+          {undated > 0 && ` ${undated} card${undated === 1 ? " has" : "s have"} no dates.`}
         </span>
       </div>
 
@@ -124,8 +136,8 @@ export function CalendarView({ board }: { board: BoardData }) {
                 onDrop={(e) => {
                   e.preventDefault();
                   setDropTarget(null);
-                  const id = e.dataTransfer.getData(CARD_MIME);
-                  if (id) reschedule(id, day);
+                  const [id, kind] = e.dataTransfer.getData(CARD_MIME).split("|");
+                  if (id) reschedule(id, kind === "start" ? "start" : "due", day);
                 }}
                 className={`flex min-h-28 flex-col gap-1 p-1.5 ${inMonth ? "bg-white dark:bg-stone-950" : "bg-stone-50 text-stone-400 dark:bg-stone-900"} ${
                   dropTarget === day ? "outline outline-2 -outline-offset-2 outline-teal-500" : ""
@@ -137,23 +149,28 @@ export function CalendarView({ board }: { board: BoardData }) {
                 >
                   {date.getDate()}
                 </span>
-                {cards.map((card) => (
+                {cards.map(({ card, kind }) => (
                   <button
-                    key={card.id}
+                    key={`${card.id}-${kind}`}
                     type="button"
                     draggable={canReschedule}
                     data-anchor={card.id}
                     onDragStart={(e) => {
-                      e.dataTransfer.setData(CARD_MIME, card.id);
+                      e.dataTransfer.setData(CARD_MIME, `${card.id}|${kind}`);
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     onDragEnd={() => setDropTarget(null)}
                     onClick={() => setOpenCardId(card.id)}
-                    aria-label={`${card.title} (${board.columns[card.columnId]?.title ?? ""})${canReschedule ? ". Drag to change its due date." : ""}`}
+                    aria-label={`${kind === "start" ? "Starts: " : ""}${card.title} (${board.columns[card.columnId]?.title ?? ""})${
+                      canReschedule ? `. Drag to change its ${kind === "start" ? "start" : "due"} date.` : ""
+                    }`}
                     className="relative w-full cursor-grab overflow-hidden rounded border border-stone-200 bg-white px-1.5 pb-0.5 pt-1.5 text-left text-xs text-stone-900 shadow-sm hover:border-stone-400 active:cursor-grabbing dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                   >
                     <span className={`absolute inset-x-0 top-0 h-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-stone-300 dark:bg-stone-600"}`} />
-                    <span className="block truncate font-medium">{card.title}</span>
+                    <span className="block truncate font-medium">
+                      {kind === "start" && <span className="mr-1 font-normal text-teal-700 dark:text-teal-400">▶ Starts</span>}
+                      {card.title}
+                    </span>
                     <span className="block truncate text-[10px] text-stone-500">{board.columns[card.columnId]?.title}</span>
                   </button>
                 ))}

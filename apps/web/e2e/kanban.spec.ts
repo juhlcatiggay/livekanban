@@ -60,7 +60,9 @@ test("columns, cards and card details survive a reload", async ({ page }) => {
   await dialog.getByLabel("Add assignee").press("Enter");
   await dialog.getByLabel("Add assignee").fill("Ada Lovelace,");
   await expect(dialog.getByRole("button", { name: "Remove Ada Lovelace" })).toBeVisible();
-  await dialog.getByLabel("Labels").fill("docs, urgent");
+  // A comma turns what you typed into a label chip.
+  await dialog.getByLabel("Add label").fill("docs, urgent,");
+  await expect(dialog.getByRole("button", { name: "Remove label urgent" })).toBeVisible();
   await dialog.getByLabel("Due date").fill("2026-11-30");
   await dialog.getByRole("button", { name: "Purple" }).click();
   await dialog.getByRole("button", { name: "Close" }).click();

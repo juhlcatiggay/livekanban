@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { DEFAULT_PERMISSIONS, PERMISSION_LABELS, type Permission } from "@livekanban/protocol";
+import { DEFAULT_PERMISSIONS, PERMISSION_LABELS, toExport, type Permission } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
+import { confirmAction } from "@/lib/confirm";
+import { downloadFile, slug } from "@/lib/download";
 import { getHostKey, hostLink } from "@/lib/host";
 import { useCan } from "@/lib/use-can";
 import { useDismiss } from "@/lib/use-dismiss";
@@ -17,6 +19,22 @@ export function HostMenu({ boardId }: { boardId: string }) {
   const menu = useDismiss();
   const [copied, setCopied] = useState(false);
   if (!can.isHost) return null;
+
+  const deleteBoard = async () => {
+    const board = useBoard.getState().board;
+    if (!board) return;
+    const ok = await confirmAction({
+      title: "Delete this board for everyone?",
+      body: "Every column, card and note is deleted permanently, the trash and daily backups too, and everyone on the board is disconnected. This can't be undone.",
+      confirmLabel: "Delete board",
+      typeToConfirm: board.title,
+      secondary: {
+        label: "Download a copy first (JSON)",
+        onClick: () => downloadFile(`${slug(board.title)}.json`, JSON.stringify(toExport(board), null, 2), "application/json"),
+      },
+    });
+    if (ok) useBoard.getState().deleteBoard();
+  };
 
   const copyHostLink = async () => {
     const key = getHostKey(boardId);
@@ -56,6 +74,15 @@ export function HostMenu({ boardId }: { boardId: string }) {
             {copied ? "Host link copied" : "Copy host link"}
           </button>
           <p className="mt-1 text-xs text-stone-500">Opens this board as host on another device. Anyone with it becomes a host, so share it only with co-hosts.</p>
+        </div>
+        <div className="mt-3 border-t border-stone-200 pt-3 dark:border-stone-700">
+          <button
+            type="button"
+            onClick={deleteBoard}
+            className="rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+          >
+            Delete board…
+          </button>
         </div>
       </div>
     </details>

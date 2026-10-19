@@ -1,4 +1,4 @@
-import { cardsByColumn, type BoardData, type Op } from "@livekanban/protocol";
+import { cardsByColumn, labelKey, type BoardData, type Op } from "@livekanban/protocol";
 
 /** Undo/redo depth, per the spec's "your own last 20 actions". */
 export const HISTORY_LIMIT = 20;
@@ -75,6 +75,20 @@ export function invert(board: BoardData, op: Op): Op | null {
       return note ? { kind: "note.restore", id: op.id, note } : null;
     }
 
+    case "checklist.add":
+      return board.cards[op.id] ? { kind: "checklist.delete", id: op.id, itemId: op.item.id } : null;
+    case "checklist.update": {
+      const item = board.cards[op.id]?.checklist.find((i) => i.id === op.itemId);
+      return item ? { kind: "checklist.update", id: op.id, itemId: op.itemId, patch: previous(item, op.patch) } : null;
+    }
+    case "checklist.delete": {
+      const list = board.cards[op.id]?.checklist ?? [];
+      const index = list.findIndex((i) => i.id === op.itemId);
+      return index >= 0 ? { kind: "checklist.add", id: op.id, item: list[index], index } : null;
+    }
+    case "label.color":
+      return { kind: "label.color", label: op.label, color: board.labelColors[labelKey(op.label)] ?? null };
+
     case "note.toCard":
     case "card.toNote":
       return null;
@@ -87,6 +101,8 @@ export interface HistoryEntry {
   /** What undoes it. */
   inverse: Op;
   at: number;
+  /** Entries sharing a group undo and redo together. */
+  group?: string;
 }
 
 const sameFields = (a: object, b: object) => {
@@ -100,5 +116,7 @@ export function coalesces(prev: HistoryEntry | undefined, next: HistoryEntry): b
   const a = prev.op;
   const b = next.op;
   if (a.kind !== b.kind || !("patch" in a) || !("patch" in b) || a.id !== b.id) return false;
+  // Typing into two different checklist items is two steps.
+  if ("itemId" in a && "itemId" in b && a.itemId !== b.itemId) return false;
   return sameFields(a.patch, b.patch);
 }
