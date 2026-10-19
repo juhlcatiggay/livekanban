@@ -603,8 +603,18 @@ const tests = {
     // Two people tick different items at the same time: both ticks survive.
     a.send({ t: "op", cid: "tick-a", op: { kind: "checklist.update", id: "card00001", itemId: "item00001", patch: { done: true } } });
     b.send({ t: "op", cid: "tick-b", op: { kind: "checklist.update", id: "card00001", itemId: "item00003", patch: { done: true } } });
-    await a.until((m) => m.cid === "tick-a");
-    await b.until((m) => m.cid === "tick-b");
+    // Each side gets its own ack and the other's broadcast, in either order; wait for both
+    // so nothing is left queued for the next op() to read.
+    const ackAndBroadcast = async (client, cid, otherItem) => {
+      let acked = false;
+      let saw = false;
+      while (!acked || !saw) {
+        const m = await client.next();
+        if (m.cid === cid) acked = true;
+        else if (m.t === "opb" && m.op.op.itemId === otherItem) saw = true;
+      }
+    };
+    await Promise.all([ackAndBroadcast(a, "tick-a", "item00003"), ackAndBroadcast(b, "tick-b", "item00001")]);
 
     const dup = await op(a, { kind: "checklist.add", id: "card00001", item: item(1) });
     assert.equal(dup.t, "reject");
