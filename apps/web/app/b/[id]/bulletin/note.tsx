@@ -47,7 +47,7 @@ export function NoteFace({ note, lifted = false, className = "" }: { note: Note;
       } ${className}`}
       style={lifted ? { width: note.w, height: note.h } : undefined}
     >
-      {note.text ? <Markdown text={note.text} /> : <span className="text-stone-400">Empty note</span>}
+      {note.text ? <Markdown text={note.text} compact onPaper /> : <span className="text-stone-400">Empty note</span>}
     </div>
   );
 }

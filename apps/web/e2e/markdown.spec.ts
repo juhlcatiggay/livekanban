@@ -45,9 +45,10 @@ test("descriptions render as Markdown, safely, for everyone", async ({ browser }
     const bad = preview.getByRole("link", { name: "bad" });
     expect(await bad.getAttribute("href")).not.toMatch(/javascript/i);
 
-    // Raw HTML and images never reach the DOM; the image shows as its alt text.
+    // Raw HTML never reaches the DOM, and no image loads by itself.
     await expect(preview.locator("script, img")).toHaveCount(0);
-    await expect(preview).toContainText("[image: tracker]");
+    // Images (including tracking pixels) only load after a click.
+    await expect(preview.getByRole("button", { name: "Load image from tracker.example" })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   }
 });
