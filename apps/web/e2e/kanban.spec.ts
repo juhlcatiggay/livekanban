@@ -135,7 +135,7 @@ test("cards can be reordered and moved with the keyboard", async ({ page }) => {
   // Move "Second" above "First".
   await card(page, "Second").focus();
   await keyboardDrag(page, ["ArrowUp"]);
-  await expect(column(page, "To do").getByRole("button", { name: /\. Press Enter/ })).toHaveText(["Second", "First"]);
+  await expect(column(page, "To do").getByRole("button", { name: /\. Press Enter/ })).toHaveText([/^Second/, /^First/]); // cards also show their #number
 
   // Move "First" into the next column.
   await card(page, "First").focus();
