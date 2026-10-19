@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COLORS, LIMITS, type Card, type CardPatch } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
 import { COLOR_STYLES } from "./colors";
+import { Markdown } from "./markdown";
 
 /** Text saves are last-writer-wins per field, sent at most every 300 ms while typing. */
 const SAVE_DEBOUNCE_MS = 300;
@@ -76,6 +77,8 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
   const labels = drafts.labels ?? card.labels.join(", ");
   const assignee = drafts.assignee ?? card.assignee;
   const dueDate = drafts.dueDate ?? card.dueDate ?? "";
+  // Cards with a description open showing it rendered; empty ones open ready to write.
+  const [descriptionMode, setDescriptionMode] = useState<"write" | "preview">(card.description ? "preview" : "write");
 
   useEffect(() => {
     const dialog = ref.current;
@@ -128,20 +131,51 @@ export function CardDialog({ card, columnTitle, onClose, onDelete, onMoveToBulle
           )}
         </p>
 
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Description
-          <textarea
-            rows={6}
-            value={description}
-            maxLength={LIMITS.description}
-            placeholder="Add details (Markdown)"
-            onChange={(e) => {
-              draft("description", e.target.value);
-              queue({ description: e.target.value });
-            }}
-            className={`${field} font-normal`}
-          />
-        </label>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Description</span>
+            <div role="tablist" aria-label="Write or preview" className="flex gap-1 text-xs">
+              {(["write", "preview"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={descriptionMode === mode}
+                  onClick={() => setDescriptionMode(mode)}
+                  className={`rounded px-2 py-0.5 capitalize ${
+                    descriptionMode === mode ? "bg-stone-200 font-semibold dark:bg-stone-700" : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+          {descriptionMode === "write" ? (
+            <textarea
+              aria-label="Description"
+              rows={6}
+              value={description}
+              maxLength={LIMITS.description}
+              placeholder="Add details. Markdown works: **bold**, - lists, [links](https://…)"
+              onChange={(e) => {
+                draft("description", e.target.value);
+                queue({ description: e.target.value });
+              }}
+              className={`${field} font-normal`}
+            />
+          ) : (
+            <div
+              role="region"
+              aria-label="Description preview"
+              title="Double-click to edit"
+              onDoubleClick={() => setDescriptionMode("write")}
+              className="max-h-72 min-h-24 overflow-y-auto rounded-md border border-stone-200 px-3 py-2 text-sm dark:border-stone-700"
+            >
+              {description ? <Markdown text={description} /> : <p className="text-stone-400">Nothing to preview yet.</p>}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm font-medium">

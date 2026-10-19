@@ -161,6 +161,7 @@ test("notes become cards and cards become notes", async ({ browser }) => {
   await ada.getByRole("tab", { name: "Kanban" }).click();
   const doing = ada.getByRole("region", { name: "Column Doing" });
   await doing.getByRole("button", { name: /^Ship v1\. Press Enter/ }).click();
+  await ada.getByRole("dialog").getByRole("tab", { name: "write" }).click();
   await expect(ada.getByRole("dialog").getByLabel("Description")).toHaveValue("Ship v1\nwith release notes");
 
   await ada.getByRole("dialog").getByRole("button", { name: "Move to bulletin" }).click();
