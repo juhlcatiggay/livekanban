@@ -6,6 +6,7 @@ import {
   MAX_CONNECTIONS,
   MAX_MESSAGE_LENGTH,
   encode,
+  isAllowed,
   parseClientMessage,
   type CursorEntry,
   type Op,
@@ -220,9 +221,9 @@ export class BoardRoom extends Server<Env> {
     // Internal only: the Worker's create endpoint calls this; external POSTs are blocked in the Worker.
     if (request.method === "POST" && url.pathname === "/init") {
       if (this.isInitialized()) return new Response("Board exists", { status: 409 });
-      const { ops = [] } = (await request.json().catch(() => ({}))) as { ops?: Op[] };
+      const { ops = [], hostKey } = (await request.json().catch(() => ({}))) as { ops?: Op[]; hostKey?: string };
       const now = Date.now();
-      this.store.init(now, () => nanoid(10), { starterColumns: ops.length === 0 });
+      this.store.init(now, () => nanoid(10), { starterColumns: ops.length === 0, hostKey });
       // Imports replay as ordinary ops, so they get the same validation and limits as live edits.
       let skipped = 0;
       for (const op of ops) if (!this.store.commit(op, "Import", now).ok) skipped++;
@@ -309,6 +310,7 @@ export class BoardRoom extends Server<Env> {
           holding: null,
           idle: false,
           away: false,
+          host: this.store.isHostKey(msg.hostKey),
         };
         conn.setState(peer);
         this.touch();
@@ -319,6 +321,7 @@ export class BoardRoom extends Server<Env> {
         this.send(conn, {
           t: "welcome",
           self: conn.id,
+          you: peer,
           peers,
           createdAt: Number(this.store.getMeta("created_at")),
           keptUntil: this.keptUntil(),
@@ -339,6 +342,10 @@ export class BoardRoom extends Server<Env> {
         const peer = conn.state;
         if (!peer) return this.send(conn, { t: "reject", cid: msg.cid, reason: "Say hello first" });
         const op = msg.op;
+        if (!isAllowed(op, this.store.permissions(), peer.host)) {
+          const reason = op.kind === "board.permissions" ? "Only the host can change permissions" : "The host has made this view-only";
+          return this.send(conn, { t: "reject", cid: msg.cid, reason });
+        }
         // Someone holding a card or note blocks others from moving, deleting or converting it.
         if (HELD_KINDS.has(op.kind) && "id" in op) {
           const holder = this.holderOf(op.id, conn.id);
@@ -377,6 +384,11 @@ export class BoardRoom extends Server<Env> {
 
       case "lock": {
         if (!conn.state) return;
+        if (!conn.state.host) {
+          const perms = this.store.permissions();
+          const allowed = this.store.isNote(msg.cardId) ? perms.editBulletin : perms.moveCards;
+          if (!allowed) return this.send(conn, { t: "lockDenied", cardId: msg.cardId, by: "the host's settings" });
+        }
         const holder = this.holderOf(msg.cardId, conn.id);
         if (holder) return this.send(conn, { t: "lockDenied", cardId: msg.cardId, by: holder.state!.name });
         this.lastMove.set(conn.id, Date.now());

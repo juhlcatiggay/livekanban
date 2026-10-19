@@ -95,13 +95,19 @@ async function createBoard(request: Request, env: Env, cors: HeadersInit): Promi
   }
 
   const id = nanoid();
+  // Whoever creates the board is its host (issue #12); their browser keeps this key.
+  const hostKey = nanoid(32);
   const room = await getServerByName(env.BoardRoom, id);
   const res = await room.fetch(
-    new Request("https://room/init", { method: "POST", body: JSON.stringify({ ops }), headers: { "Content-Type": "application/json" } }),
+    new Request("https://room/init", {
+      method: "POST",
+      body: JSON.stringify({ ops, hostKey }),
+      headers: { "Content-Type": "application/json" },
+    }),
   );
   if (res.status !== 201) throw new Error(`Room init failed: ${res.status}`);
   const { imported, skipped } = (await res.json()) as { imported: number; skipped: number };
-  return Response.json({ id, imported, skipped }, { status: 201, headers: cors });
+  return Response.json({ id, hostKey, imported, skipped }, { status: 201, headers: cors });
 }
 
 /** Constant-time comparison so the admin token can't be guessed byte by byte. */

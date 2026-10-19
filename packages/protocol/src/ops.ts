@@ -10,6 +10,7 @@ import {
   type NotePatch,
   type Op,
 } from "./board";
+import { parsePermissions } from "./permissions";
 
 /** Client-generated ids for columns and cards (short nanoids). */
 export const ITEM_ID_RE = /^[A-Za-z0-9_-]{8,24}$/;
@@ -169,6 +170,10 @@ export function parseOp(v: unknown): Op | null {
       return isId(v.id) && isX(v.x) && isY(v.y) ? { kind: "note.move", id: v.id, x: v.x, y: v.y } : null;
     case "board.pin":
       return v.noteId === null || isId(v.noteId) ? { kind: "board.pin", noteId: v.noteId } : null;
+    case "board.permissions": {
+      const permissions = parsePermissions(v.permissions);
+      return permissions ? { kind: "board.permissions", permissions } : null;
+    }
     case "note.toCard":
       return isId(v.id) && isId(v.cardId) && isId(v.columnId) && isPositionKey(v.position)
         ? { kind: "note.toCard", id: v.id, cardId: v.cardId, columnId: v.columnId, position: v.position }

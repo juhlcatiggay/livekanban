@@ -1,4 +1,5 @@
 import { generateKeyBetween } from "fractional-indexing";
+import { DEFAULT_PERMISSIONS, type Permissions } from "./permissions";
 
 /** Fixed palette so colors render consistently and can't carry arbitrary CSS. */
 export const COLORS = ["gray", "red", "amber", "green", "teal", "blue", "purple", "pink"] as const;
@@ -69,6 +70,10 @@ export interface BoardData {
   notes: Record<string, Note>;
   /** Note shown as an announcement banner on the kanban tab. */
   pinnedNoteId: string | null;
+  /** What people other than the host may change. */
+  permissions: Permissions;
+  /** False for boards created before hosts existed: nobody can restrict them. */
+  hasHost: boolean;
 }
 
 export type ColumnPatch = Partial<Pick<Column, "title" | "color" | "wipLimit">>;
@@ -102,7 +107,9 @@ export type Op =
   /** Replaces a note with a card made from its text (see noteToCardFields). */
   | { kind: "note.toCard"; id: string; cardId: string; columnId: string; position: string }
   /** Replaces a card with a note made from its title and description (see cardToNoteText). */
-  | { kind: "card.toNote"; id: string; noteId: string; x: number; y: number; z?: number };
+  | { kind: "card.toNote"; id: string; noteId: string; x: number; y: number; z?: number }
+  /** Host only: what everyone else may change. */
+  | { kind: "board.permissions"; permissions: Permissions };
 
 export type OpKind = Op["kind"];
 
@@ -115,7 +122,15 @@ export interface CommittedOp {
   at: number;
 }
 
-export const emptyBoard = (): BoardData => ({ title: "Untitled board", columns: {}, cards: {}, notes: {}, pinnedNoteId: null });
+export const emptyBoard = (): BoardData => ({
+  title: "Untitled board",
+  columns: {},
+  cards: {},
+  notes: {},
+  pinnedNoteId: null,
+  permissions: DEFAULT_PERMISSIONS,
+  hasHost: false,
+});
 
 /** A note's first non-empty line becomes the card title; the full text becomes the description if there's more. */
 export function noteToCardFields(text: string): { title: string; description: string } {
@@ -321,6 +336,9 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
       };
       return { ...board, notes, cards: { ...board.cards, [card.id]: card } };
     }
+
+    case "board.permissions":
+      return { ...board, permissions: op.permissions };
 
     case "card.toNote": {
       const card = board.cards[op.id];
