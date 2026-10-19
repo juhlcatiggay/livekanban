@@ -16,7 +16,7 @@ LiveKanban is a free, no-signup kanban board on Next.js where everyone on a boar
 
 **Non-goals for v1**
 
-- User accounts, teams, billing or permissions beyond "has the link".
+- User accounts, teams or billing. (Permissions beyond "has the link" were added after v1 planning as host privileges, see "Access".)
 - Offline editing, mobile apps, integrations (Slack, GitHub), file attachments.
 
 **Decided:** "bulletin board" is a free-form canvas of sticky notes beside the kanban on each board. Pinning a note shows it as an announcement banner on the kanban tab, which covers the "announcements strip" use case too.
@@ -143,8 +143,8 @@ Latency budget for the 100 ms target: sampling and send ≤ 16 ms, network to th
 
 | Type | Direction | Stream | Payload | Rate |
 | --- | --- | --- | --- | --- |
-| `hello` | client → room | presence | client ID, name, color, last seq | on connect |
-| `welcome` | room → client | both | presence list + `sync`: full snapshot, or a replay of missed ops when the log still covers `lastSeq` | on connect / resync |
+| `hello` | client → room | presence | client ID, name, color, last seq, optional host key | on connect |
+| `welcome` | room → client | both | `you` (your own peer, incl. `host`), presence list + `sync`: full snapshot, or a replay of missed ops when the log still covers `lastSeq` | on connect / resync |
 | `cursor` | client → room | presence | bare array `["c", anchor, fx, fy]`. The held card comes from the peer's `holding`, not the cursor | ≤ 30/s per person |
 | `cursors` | room → all | presence | `["C", [[connectionId, anchor, fx, fy], …]]`: latest position of everyone who moved this tick | ≤ 60/s per viewer |
 | `presence` | client → room | presence | `editing` target ID or null, `idle`, `away` | on change |
@@ -163,7 +163,7 @@ Each board's data lives in its own Durable Object SQLite database, so tables hav
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id |
+| `meta` | `key`, `value` | board title, created\_at, last\_activity\_at, schema\_version, pinned\_note\_id, host\_key, permissions (JSON) |
 | `columns` | `id`, `title`, `position`, `color`, `wip_limit`, `deleted_at` | `position` = fractional index string |
 | `cards` | `id`, `column_id`, `position`, `title`, `description`, `color`, `labels` (JSON), `assignee`, `due_date`, `updated_at`, `updated_by`, `deleted_at` | soft delete feeds the 7-day trash |
 | `notes` | `id`, `x`, `y`, `w`, `h`, `z`, `color`, `text`, `updated_at`, `updated_by`, `deleted_at` | bulletin canvas (4000 × 3000 canvas px); absolute canvas coordinates; the room assigns `z` so a moved or new note goes on top |
@@ -181,6 +181,7 @@ The board URL is the only credential, so it must be unguessable and the room mus
 **Access**
 
 - v1: one link, full edit access. Board IDs are 21-character nanoids; never sequential, never listed, `noindex` on board pages.
+- Host (issue #12): creating a board returns a 32-character host key that the creator's browser keeps (localStorage, per board); the room stores it in its own `meta` and compares it in constant time when `hello` presents it. The host can make four things view-only for everyone else: renaming the board, the bulletin board, card and column contents, and moving cards and columns (`board.permissions` op; all allowed by default). `requiredPermissions()` in the protocol maps every op to what it needs, and both the room (enforcement) and the UI (hiding controls) use it. "Copy host link" (`/b/<id>#host=<key>`) makes another device a host; the fragment never reaches servers and is stripped on arrival. Boards created before hosts existed have no host and stay fully open. The key is stored in plain text rather than hashed because checking it must be synchronous: an async hello would let a following op be processed before the room knew who the host was.
 - v1.1 (cheap to add): a separate read-only link. The room stores a hash of an edit secret; the edit link carries `#k=<secret>` in the URL fragment (never sent in HTTP logs), and the client presents it in `hello`. Viewers still see live cursors but cannot send ops.
 - Optional board passcode, hashed in `meta`, for people who want a lock without an account.
 
