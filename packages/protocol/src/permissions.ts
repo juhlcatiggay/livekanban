@@ -40,6 +40,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
 export function requiredPermissions(op: Op): Permission[] | null {
   switch (op.kind) {
     case "board.permissions":
+    case "member.rename":
       return null;
     case "board.update":
       return ["renameBoard"];

@@ -52,8 +52,8 @@ export function LabelsField({ value, onChange, labelColors, onColor, known, read
   return (
     <div className="flex flex-col gap-1.5">
       <div
-        className={`flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-stone-300 px-1.5 py-1 focus-within:border-teal-500 dark:border-stone-700 ${
-          readOnly ? "bg-stone-50 dark:bg-stone-800/40" : ""
+        className={`flex min-h-9 flex-wrap items-center gap-1.5 field px-1.5 py-1 ${
+          readOnly ? "bg-gray-50 dark:bg-gray-800/40" : ""
         }`}
       >
         {value.map((label) => {
@@ -82,7 +82,7 @@ export function LabelsField({ value, onChange, labelColors, onColor, known, read
                 <span
                   role="group"
                   aria-label={`Colors for ${label}`}
-                  className="absolute left-0 top-full z-20 mt-1 flex items-center gap-1.5 rounded-md border border-stone-200 bg-white p-2 shadow-lg dark:border-stone-700 dark:bg-stone-900"
+                  className="absolute left-0 top-full z-20 mt-1 flex items-center gap-1.5 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-2 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90"
                 >
                   {COLORS.map((c) => (
                     <button
@@ -94,7 +94,7 @@ export function LabelsField({ value, onChange, labelColors, onColor, known, read
                         onColor(label, c);
                         setColoring(null);
                       }}
-                      className={`h-5 w-5 rounded-full ${COLOR_STYLES[c].swatch} ${color === c ? "ring-2 ring-stone-900 ring-offset-1 dark:ring-white dark:ring-offset-stone-900" : ""}`}
+                      className={`h-5 w-5 rounded-full ${COLOR_STYLES[c].swatch} ${color === c ? "ring-2 ring-gray-900 ring-offset-1 dark:ring-white dark:ring-offset-gray-900" : ""}`}
                     />
                   ))}
                   {labelColors[labelKey(label)] && (
@@ -104,7 +104,7 @@ export function LabelsField({ value, onChange, labelColors, onColor, known, read
                         onColor(label, null);
                         setColoring(null);
                       }}
-                      className="ml-1 whitespace-nowrap text-xs font-normal text-stone-600 underline dark:text-stone-300"
+                      className="ml-1 whitespace-nowrap text-xs font-normal text-gray-600 underline dark:text-gray-300"
                     >
                       Automatic
                     </button>
@@ -143,7 +143,7 @@ export function LabelsField({ value, onChange, labelColors, onColor, known, read
             className="min-w-24 flex-1 bg-transparent px-1 py-0.5 text-sm font-normal outline-none"
           />
         )}
-        {readOnly && !value.length && <span className="px-1 text-sm font-normal text-stone-400">None</span>}
+        {readOnly && !value.length && <span className="px-1 text-sm font-normal text-gray-400">None</span>}
       </div>
       {!readOnly && !full && offered.length > 0 && (
         <div className="flex flex-wrap gap-1 text-xs font-normal" aria-label="Labels on this board">

@@ -92,8 +92,7 @@ test("a JSON export imports into a new board, and Markdown export reads well", a
   const file = (await json.path())!;
 
   await page.goto("/new");
-  await page.getByText("Start from a JSON export instead of an empty board").click();
-  await page.getByLabel("Choose a file exported from LiveKanban (Export › JSON)").setInputFiles(file);
+  await page.getByLabel("Import a JSON export").setInputFiles(file);
   await page.getByRole("button", { name: "Create board" }).click();
   await page.waitForURL((url) => /\/b\/[A-Za-z0-9_-]{21}$/.test(url.pathname) && url.href !== original);
   await expect(page.getByRole("button", { name: /^Rename board title: Roadmap/ })).toBeVisible();
@@ -104,8 +103,7 @@ test("a JSON export imports into a new board, and Markdown export reads well", a
 
 test("importing something that isn't an export explains the problem", async ({ page }) => {
   await page.goto("/new");
-  await page.getByText("Start from a JSON export instead of an empty board").click();
-  await page.getByLabel("Choose a file exported from LiveKanban (Export › JSON)").setInputFiles({
+  await page.getByLabel("Import a JSON export").setInputFiles({
     name: "trello.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify({ name: "Trello board", lists: [] })),

@@ -87,14 +87,14 @@ export function CalendarView({ board }: { board: BoardData }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-2 text-sm dark:border-stone-800">
-        <button type="button" onClick={() => shift(-1)} aria-label="Previous month" className="rounded px-2 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800">
+      <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-2 text-sm dark:border-gray-800">
+        <button type="button" onClick={() => shift(-1)} aria-label="Previous month" className="rounded px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800">
           ‹
         </button>
         <h2 className="min-w-40 text-center font-semibold" aria-live="polite">
           {monthFormat.format(new Date(month.year, month.month, 1))}
         </h2>
-        <button type="button" onClick={() => shift(1)} aria-label="Next month" className="rounded px-2 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800">
+        <button type="button" onClick={() => shift(1)} aria-label="Next month" className="rounded px-2 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800">
           ›
         </button>
         <button
@@ -103,20 +103,20 @@ export function CalendarView({ board }: { board: BoardData }) {
             const now = new Date();
             setMonth({ year: now.getFullYear(), month: now.getMonth() });
           }}
-          className="rounded-md border border-stone-300 px-2 py-0.5 hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+          className="rounded-full px-2 py-0.5 hover:bg-black/10 dark:hover:bg-white/15 bg-black/5 dark:bg-white/10"
         >
           Today
         </button>
-        <span className="ml-auto text-xs text-stone-500">
+        <span className="ml-auto text-xs text-gray-500">
           {canReschedule ? "Drag a card to another day to change its date." : "The host has made cards view-only."}
           {undated > 0 && ` ${undated} card${undated === 1 ? " has" : "s have"} no dates.`}
         </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3" data-presence-area data-anchor="calendar">
-        <div className="grid min-w-[44rem] grid-cols-7 gap-px overflow-hidden rounded-lg border border-stone-200 bg-stone-200 dark:border-stone-800 dark:bg-stone-800">
+        <div className="grid min-w-[44rem] grid-cols-7 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800">
           {WEEKDAYS.map((d) => (
-            <div key={d} className="bg-stone-50 px-2 py-1 text-xs font-medium text-stone-500 dark:bg-stone-900">
+            <div key={d} className="bg-gray-50 px-2 py-1 text-xs font-medium text-gray-500 dark:bg-gray-900">
               {d}
             </div>
           ))}
@@ -143,12 +143,12 @@ export function CalendarView({ board }: { board: BoardData }) {
                   const [id, kind] = e.dataTransfer.getData(CARD_MIME).split("|");
                   if (id) reschedule(id, kind === "start" ? "start" : "due", day);
                 }}
-                className={`flex min-h-28 flex-col gap-1 p-1.5 ${inMonth ? "bg-white dark:bg-stone-950" : "bg-stone-50 text-stone-400 dark:bg-stone-900"} ${
-                  dropTarget === day ? "outline outline-2 -outline-offset-2 outline-teal-500" : ""
+                className={`flex min-h-28 flex-col gap-1 p-1.5 ${inMonth ? "bg-white dark:bg-gray-950" : "bg-gray-50 text-gray-400 dark:bg-gray-900"} ${
+                  dropTarget === day ? "outline outline-2 -outline-offset-2 outline-accent-500" : ""
                 }`}
               >
                 <span
-                  className={`self-end rounded-full px-1.5 text-xs tabular-nums ${day === today ? "bg-teal-600 font-semibold text-white" : ""}`}
+                  className={`self-end rounded-full px-1.5 text-xs tabular-nums ${day === today ? "bg-accent-600 font-semibold text-white" : ""}`}
                   aria-current={day === today ? "date" : undefined}
                 >
                   {date.getDate()}
@@ -168,14 +168,14 @@ export function CalendarView({ board }: { board: BoardData }) {
                     aria-label={`${kind === "start" ? "Starts: " : ""}${card.title} (${board.columns[card.columnId]?.title ?? ""})${
                       canReschedule ? `. Drag to change its ${kind === "start" ? "start" : "due"} date.` : ""
                     }`}
-                    className="relative w-full cursor-grab overflow-hidden rounded border border-stone-200 bg-white px-1.5 pb-0.5 pt-1.5 text-left text-xs text-stone-900 shadow-sm hover:border-stone-400 active:cursor-grabbing dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                    className="relative w-full cursor-grab overflow-hidden rounded border border-gray-200 bg-white px-1.5 pb-0.5 pt-1.5 text-left text-xs text-gray-900 shadow-sm hover:border-gray-400 active:cursor-grabbing dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                   >
-                    <span className={`absolute inset-x-0 top-0 h-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-stone-300 dark:bg-stone-600"}`} />
+                    <span className={`absolute inset-x-0 top-0 h-1 ${card.color ? COLOR_STYLES[card.color].stripe : "bg-gray-300 dark:bg-gray-600"}`} />
                     <span className="block truncate font-medium">
-                      {kind === "start" && <span className="mr-1 font-normal text-teal-700 dark:text-teal-400">▶ Starts</span>}
+                      {kind === "start" && <span className="mr-1 font-normal text-accent-700 dark:text-accent-400">▶ Starts</span>}
                       {card.title}
                     </span>
-                    <span className="block truncate text-[10px] text-stone-500">{board.columns[card.columnId]?.title}</span>
+                    <span className="block truncate text-[10px] text-gray-500">{board.columns[card.columnId]?.title}</span>
                   </button>
                 ))}
               </section>

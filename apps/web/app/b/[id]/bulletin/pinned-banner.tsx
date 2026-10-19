@@ -15,7 +15,7 @@ export function PinnedBanner({ board }: { board: BoardData }) {
   return (
     <aside
       aria-label="Pinned announcement"
-      className="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-stone-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
+      className="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-gray-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
     >
       <span aria-hidden className="pt-0.5">
         📌

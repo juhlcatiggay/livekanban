@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { connectBoard, useBoard, type ConnectionStatus } from "@/lib/board-store";
 import { claimHostFromUrl, getHostKey } from "@/lib/host";
 import { getIdentity } from "@/lib/identity";
+import { copyText } from "@/lib/clipboard";
 import { useCan } from "@/lib/use-can";
 import { useActivity, useCursorSender } from "@/lib/use-presence";
 import { CreateBoardButton } from "../../create-board-button";
+import { ThemeToggle } from "../../theme-toggle";
 import { BoardActions } from "./board-actions";
 import { ConfirmDialog } from "./confirm-dialog";
 import { HistoryButton } from "./history";
@@ -47,24 +49,29 @@ export function Board({ boardId }: { boardId: string }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" className="shrink-0 font-semibold">
-            LiveKanban
+    <div className="flex h-dvh flex-col bg-gray-100 dark:bg-black">
+      {/* One toolbar, like a Mac app: where you are on the left, the views in the middle, actions on the right. */}
+      {/* Wide screens: one row (name · views · actions). Narrow: name and actions, then the views on their own row. */}
+      <header className="material material-edge relative z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2 lg:grid lg:grid-cols-[1fr_auto_1fr]">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <Link href="/" aria-label="LiveKanban home" title="All boards" className="press shrink-0 rounded-md px-1.5 py-1 text-[15px] font-semibold hover:bg-black/5 dark:hover:bg-white/10">
+            ‹ LiveKanban
           </Link>
-          <span className="text-stone-300 dark:text-stone-700">/</span>
+          <span className="text-gray-300 dark:text-gray-700">/</span>
           {board && (
             <InlineEdit
               value={board.title}
               label="board title"
-              className="text-base font-medium"
+              className="text-[15px] font-semibold"
               onCommit={(title) => dispatch({ kind: "board.update", title })}
               disabled={!can.renameBoard}
             />
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="order-last flex w-full justify-center lg:order-none lg:w-auto">
+          <Tabs view={view} noteCount={board ? Object.keys(board.notes).length : 0} />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {board && <HistoryButton />}
           {board && <BoardActions board={board} />}
           <HostMenu boardId={boardId} />
@@ -72,10 +79,10 @@ export function Board({ boardId }: { boardId: string }) {
           <CopyLinkButton />
         </div>
       </header>
-      <Tabs view={view} noteCount={board ? Object.keys(board.notes).length : 0} />
+      <ViewOnlyNotice />
       <main className="flex min-h-0 flex-1 flex-col">
         {!board ? (
-          <p className="m-auto text-stone-500">Loading board…</p>
+          <p className="m-auto text-gray-500">Loading board…</p>
         ) : view === "bulletin" ? (
           <BulletinBoard board={board} />
         ) : view === "calendar" ? (
@@ -95,10 +102,11 @@ export function Board({ boardId }: { boardId: string }) {
       <UndoToast />
       <ConfirmDialog />
       <ErrorToast />
-      <footer className="flex items-center justify-between border-t border-stone-200 px-4 py-2 text-xs text-stone-500 dark:border-stone-800">
+      <footer className="hairline flex items-center justify-between border-t px-4 py-1.5 text-xs text-gray-500">
         <KeptUntil />
         <span className="flex items-center gap-4">
           <ReportLink boardId={boardId} />
+          <ThemeToggle />
           <ConnectionInfo status={status} />
         </span>
       </footer>
@@ -137,7 +145,7 @@ function ReportLink({ boardId }: { boardId: string }) {
   const subject = encodeURIComponent(`Report board ${boardId}`);
   const body = encodeURIComponent(`Board ID: ${boardId}\n\nWhat's wrong:\n`);
   return (
-    <a href={`mailto:${email}?subject=${subject}&body=${body}`} className="hover:text-stone-800 hover:underline dark:hover:text-stone-200">
+    <a href={`mailto:${email}?subject=${subject}&body=${body}`} className="hover:text-gray-800 hover:underline dark:hover:text-gray-200">
       Report this board
     </a>
   );
@@ -150,19 +158,16 @@ function Tabs({ view, noteCount }: { view: View; noteCount: number }) {
       role="tab"
       aria-selected={view === v}
       onClick={() => setView(v)}
-      className={`border-b-2 px-3 py-2 text-sm ${
-        view === v ? "border-teal-600 font-semibold" : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
-      }`}
+      className={`rounded-[7px] px-4 py-1 text-[13px] font-medium ${view === v ? "" : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"}`}
     >
       {label}
     </button>
   );
   return (
-    <nav role="tablist" aria-label="Board views" className="flex gap-1 border-b border-stone-200 px-3 dark:border-stone-800">
+    <nav role="tablist" aria-label="Board views" className="segmented">
       {tab("kanban", "Kanban")}
       {tab("bulletin", noteCount ? `Bulletin (${noteCount})` : "Bulletin")}
       {tab("calendar", "Calendar")}
-      <ViewOnlyNotice />
     </nav>
   );
 }
@@ -179,9 +184,10 @@ function ErrorToast() {
 
   if (!error) return null;
   return (
-    <div role="alert" className="fixed right-4 top-16 z-40 flex items-center gap-3 rounded-lg bg-red-600 px-4 py-2.5 text-sm text-white shadow-lg">
-      <span>Change not saved: {error}</span>
-      <button type="button" onClick={clearError} aria-label="Dismiss" className="text-lg leading-none">
+    <div role="alert" className="fixed left-1/2 top-16 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full bg-gray-900/90 py-2 pl-4 pr-2 text-[13px] text-white shadow-lg backdrop-blur dark:bg-gray-100/90 dark:text-gray-900">
+      <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+      <span>{error}</span>
+      <button type="button" onClick={clearError} aria-label="Dismiss" className="flex h-6 w-6 items-center justify-center rounded-full text-base leading-none hover:bg-white/15 dark:hover:bg-black/10">
         ×
       </button>
     </div>
@@ -194,11 +200,11 @@ function CopyLinkButton() {
     <button
       type="button"
       onClick={async () => {
-        await navigator.clipboard.writeText(window.location.href);
+        if (!(await copyText(window.location.href))) return;
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="rounded-md border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-900"
+      className="rounded-full bg-accent-600 px-3.5 py-1 text-[13px] font-medium text-white hover:bg-accent-700"
     >
       {copied ? "Link copied" : "Copy link"}
     </button>
@@ -256,7 +262,7 @@ function Notice({ title, body, children }: { title: string; body: string; childr
     <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 text-center">
       <div>
         <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="mt-2 text-stone-600 dark:text-stone-400">{body}</p>
+        <p className="mt-2 text-gray-600 dark:text-gray-400">{body}</p>
       </div>
       {children}
     </main>

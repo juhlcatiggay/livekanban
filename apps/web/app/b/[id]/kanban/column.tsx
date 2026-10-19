@@ -34,7 +34,7 @@ export function SortableColumn({ column, cards, presence, can, onOpenCard, onDel
     <section
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`flex max-h-full w-72 shrink-0 flex-col rounded-xl bg-stone-100 dark:bg-stone-900/60 ${
+      className={`flex max-h-full w-72 shrink-0 flex-col rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] ${
         isDragging ? "opacity-40" : ""
       }`}
       data-anchor={column.id}
@@ -55,7 +55,7 @@ export function SortableColumn({ column, cards, presence, can, onOpenCard, onDel
               {...listeners}
               aria-roledescription="column"
               aria-label={`Move column ${column.title}. Press Space to pick up.`}
-              className="cursor-grab touch-none rounded px-1 text-stone-400 hover:bg-stone-200 active:cursor-grabbing dark:hover:bg-stone-800"
+              className="cursor-grab touch-none rounded-md px-1 text-gray-400 hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/10"
             >
               ⠿
             </button>
@@ -63,7 +63,7 @@ export function SortableColumn({ column, cards, presence, can, onOpenCard, onDel
         }
       />
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <ul className="flex min-h-12 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+        <ul className="flex min-h-12 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-0.5">
           {cards.map((card) => (
             <SortableCard
               key={card.id}
@@ -84,9 +84,9 @@ export function SortableColumn({ column, cards, presence, can, onOpenCard, onDel
 /** Static header used for the column drag overlay. */
 export function ColumnPreview({ column, count }: { column: Column; count: number }) {
   return (
-    <section className="w-72 rotate-1 rounded-xl bg-stone-100 shadow-lg ring-2 ring-teal-500 dark:bg-stone-900">
+    <section className="w-72 rotate-1 rounded-2xl bg-gray-100 shadow-[0_20px_40px_-12px_rgb(0_0_0/0.35)] ring-1 ring-accent-500/50 dark:bg-gray-900">
       <div className="px-3 py-2.5 text-sm font-semibold">
-        {column.title} <span className="font-normal text-stone-500">{count}</span>
+        {column.title} <span className="font-normal text-gray-500">{count}</span>
       </div>
     </section>
   );
@@ -113,7 +113,7 @@ function ColumnHeader({
 
   return (
     <header
-      className="relative flex items-center gap-1 rounded-t-xl px-2 py-2"
+      className="relative flex items-center gap-1 rounded-t-2xl px-2 pb-1.5 pt-2.5"
       style={editors[0] ? { boxShadow: `inset 0 0 0 2px ${editors[0].color}` } : undefined}
     >
       {editors.length > 0 && <EditingBadge peers={editors} className="-top-2.5 left-8" />}
@@ -121,13 +121,13 @@ function ColumnHeader({
       <InlineEdit
         value={column.title}
         label="column title"
-        className="flex-1 text-sm font-semibold"
+        className="flex-1 text-[13px] font-semibold"
         onCommit={(title) => dispatch({ kind: "column.update", id: column.id, patch: { title } })}
         onEditingChange={(editing) => setPresence({ editing: editing ? column.id : null })}
         disabled={!canEdit}
       />
       <span
-        className={`rounded px-1.5 text-xs tabular-nums ${over ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300" : "text-stone-500"}`}
+        className={`rounded-full px-2 py-px text-[11px] font-medium tabular-nums ${over ? "bg-red-500 text-white" : "bg-black/[0.06] text-gray-600 dark:bg-white/10 dark:text-gray-300"}`}
         title={column.wipLimit !== null ? `WIP limit ${column.wipLimit}` : undefined}
       >
         {count}
@@ -156,12 +156,12 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
   return (
     <details ref={menu} className="relative">
       <summary
-        className="cursor-pointer list-none rounded px-1.5 text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800"
+        className="cursor-pointer list-none rounded-md px-1.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
         aria-label={`Column ${column.title} options`}
       >
         ⋯
       </summary>
-      <div className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-stone-200 bg-white p-2 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+      <div className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-2 text-sm shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90">
         <label className="flex items-center justify-between gap-2 px-1 py-1">
           WIP limit
           <input
@@ -177,7 +177,7 @@ function ColumnMenu({ column, onDelete }: { column: Column; onDelete: () => void
               saveWip();
               closeMenu(menu);
             }}
-            className="w-16 rounded border border-stone-300 bg-transparent px-1 py-0.5 dark:border-stone-700"
+            className="field w-16 rounded px-1 py-0.5"
           />
         </label>
         <button
@@ -205,7 +205,7 @@ function AddCard({ columnId, lastPosition }: { columnId: string; lastPosition: s
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="m-2 mt-0 rounded-lg px-2 py-1.5 text-left text-sm text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800"
+        className="m-2 mt-0 rounded-lg px-2 py-1.5 text-left text-[13px] font-medium text-gray-500 hover:bg-black/5 hover:text-gray-800 dark:hover:bg-white/10 dark:hover:text-gray-200"
       >
         + Add card
       </button>
@@ -242,13 +242,13 @@ function AddCard({ columnId, lastPosition }: { columnId: string; lastPosition: s
           }
           if (e.key === "Escape") setOpen(false);
         }}
-        className="resize-none rounded-lg border border-stone-300 bg-white p-2 text-sm outline-none focus:border-teal-500 dark:border-stone-700 dark:bg-stone-900"
+        className="field resize-none rounded-lg p-2 text-sm"
       />
       <div className="flex gap-2">
-        <button type="submit" className="rounded-md bg-teal-600 px-3 py-1 text-sm font-medium text-white hover:bg-teal-700">
+        <button type="submit" className="rounded-full bg-accent-600 px-3 py-1 text-sm font-medium text-white hover:bg-accent-700">
           Add
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded-md px-3 py-1 text-sm text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-full px-3 py-1 text-sm text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
           Cancel
         </button>
       </div>

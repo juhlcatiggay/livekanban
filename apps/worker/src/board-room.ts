@@ -1,4 +1,4 @@
-import { Server, type Connection } from "partyserver";
+import { Server, type Connection, type ConnectionContext } from "partyserver";
 import { nanoid } from "nanoid";
 import {
   CURSOR_TICK_MS,
@@ -31,7 +31,13 @@ function publicPeer({ clientId: _, ...peer }: ConnState): Peer {
 }
 
 /** Wrong passwords allowed per board per window, before everyone has to wait. */
-const PASSWORD_ATTEMPTS = 10;
+/**
+ * Wrong-password limits. Per network address, so one person guessing (or
+ * deliberately failing) can't lock everyone else out; plus a looser ceiling
+ * per board that bounds the CPU spent on password checks.
+ */
+const PASSWORD_ATTEMPTS_PER_IP = 10;
+const PASSWORD_ATTEMPTS_PER_BOARD = 60;
 const PASSWORD_WINDOW_MS = 60_000;
 
 /** What the create endpoint sends to /init. Already validated by the Worker. */
@@ -89,7 +95,9 @@ export class BoardRoom extends Server<Env> {
   /** Connections whose password is being checked. */
   private readonly checkingPassword = new Set<string>();
   /** Recent wrong passwords for this board, from anyone; in memory (a restart forgets them, which only helps briefly). */
-  private passwordFailures: number[] = [];
+  private passwordFailures: { at: number; ip: string }[] = [];
+  /** Network address per connection, for password limits. In memory: after hibernation, "unknown". */
+  private readonly ips = new Map<string, string>();
   /** Rate-limit buckets; in memory, so they reset after hibernation (when nobody is sending). */
   private readonly buckets = new Map<string, Bucket>();
   /** Latest cursor per connection since the last flush (latest wins). */
@@ -133,7 +141,9 @@ export class BoardRoom extends Server<Env> {
     await this.ctx.storage.deleteAll();
   }
 
+  /** Sends to one connection; a socket that has already closed (e.g. a hello after we closed it) is skipped. */
   private send(conn: Connection, msg: ServerMessage) {
+    if (conn.readyState !== WebSocket.OPEN) return;
     conn.send(encode(msg));
   }
 
@@ -324,15 +334,20 @@ export class BoardRoom extends Server<Env> {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  async onConnect(conn: Connection<ConnState>) {
+  async onConnect(conn: Connection<ConnState>, ctx: ConnectionContext) {
     if (!this.isInitialized()) {
       this.send(conn, { t: "expired" });
       conn.close(CloseCode.Expired, "Board expired");
       await this.forget();
       return;
     }
-    if ([...this.getConnections()].length > MAX_CONNECTIONS) {
-      conn.close(CloseCode.RoomFull, "Board is full");
+    this.ips.set(conn.id, ctx.request.headers.get("CF-Connecting-IP") ?? "unknown");
+    const connections = [...this.getConnections<ConnState>()];
+    if (connections.length > MAX_CONNECTIONS) {
+      // Sockets that never got in (e.g. stuck at the password) make room before anyone who did.
+      const idle = connections.find((c) => c.id !== conn.id && !c.state && !this.checkingPassword.has(c.id));
+      if (idle) idle.close(CloseCode.RoomFull, "Board is full");
+      else conn.close(CloseCode.RoomFull, "Board is full");
     }
     // The peer is announced once it sends `hello` with its name and color.
   }
@@ -372,14 +387,23 @@ export class BoardRoom extends Server<Env> {
     switch (msg.t) {
       case "hello": {
         if (conn.state || this.checkingPassword.has(conn.id)) return;
+        // A socket opened just before the board was deleted can still say hello afterwards.
+        if (!this.isInitialized()) {
+          this.send(conn, { t: "expired" });
+          if (conn.readyState === WebSocket.OPEN) conn.close(CloseCode.Expired, "Board expired");
+          return;
+        }
         const record = this.store.passwordRecord();
         // The host never needs the password; everyone else does when one is set.
         if (!record || this.store.isHostKey(msg.hostKey)) return this.welcome(conn, msg);
         if (msg.password === undefined) return this.send(conn, { t: "passwordRequired", wrong: false });
         const now = Date.now();
-        this.passwordFailures = this.passwordFailures.filter((t) => now - t < PASSWORD_WINDOW_MS);
-        if (this.passwordFailures.length >= PASSWORD_ATTEMPTS) {
-          const retryAfterMs = this.passwordFailures[0] + PASSWORD_WINDOW_MS - now;
+        const ip = this.ips.get(conn.id) ?? "unknown";
+        this.passwordFailures = this.passwordFailures.filter((f) => now - f.at < PASSWORD_WINDOW_MS);
+        const mine = this.passwordFailures.filter((f) => f.ip === ip);
+        const limited = mine.length >= PASSWORD_ATTEMPTS_PER_IP ? mine : this.passwordFailures.length >= PASSWORD_ATTEMPTS_PER_BOARD ? this.passwordFailures : null;
+        if (limited) {
+          const retryAfterMs = limited[0].at + PASSWORD_WINDOW_MS - now;
           return this.send(conn, { t: "passwordRequired", wrong: true, retryAfterMs });
         }
         // Checked asynchronously; until it passes, the connection has no state, so anything else it sends is ignored.
@@ -388,7 +412,7 @@ export class BoardRoom extends Server<Env> {
           verifyPassword(msg.password, record)
             .then((ok) => {
               if (ok) return this.welcome(conn, msg);
-              this.passwordFailures.push(Date.now());
+              this.passwordFailures.push({ at: Date.now(), ip });
               this.send(conn, { t: "passwordRequired", wrong: true });
             })
             .finally(() => this.checkingPassword.delete(conn.id)),
@@ -475,11 +499,17 @@ export class BoardRoom extends Server<Env> {
 
       case "profile": {
         if (!conn.state) return;
+        const previous = conn.state.name;
         const renamed = this.store.renameMember(conn.state.clientId, msg.name, msg.color);
         if (!renamed.ok) return this.send(conn, { t: "profileRejected", reason: renamed.reason });
         // Every tab of this browser on the board shows the new name.
         for (const other of this.getConnections<ConnState>()) {
           if (other.state?.clientId === conn.state.clientId) this.updatePeer(other, { name: msg.name, color: msg.color });
+        }
+        // Then cards that name this person (as assignee or last editor), and the history, follow it.
+        if (previous !== msg.name) {
+          const result = this.store.commit({ kind: "member.rename", from: previous, to: msg.name }, msg.name, Date.now());
+          if (result.ok) this.broadcast(encode({ t: "opb", op: result.committed }));
         }
         return;
       }
@@ -505,6 +535,7 @@ export class BoardRoom extends Server<Env> {
   }
 
   onClose(conn: Connection<ConnState>) {
+    this.ips.delete(conn.id);
     this.lastMove.delete(conn.id);
     this.buckets.delete(conn.id);
     this.cursorBatch.delete(conn.id);

@@ -757,6 +757,42 @@ const tests = {
     a.ws.close();
   },
 
+  async "renaming yourself updates your name on every card and in history"() {
+    const id = await newBoard();
+    const a = await join(id, "Ada");
+    const b = await join(id, "Bob");
+    await a.next(); // join(b)
+    const col = firstColumnId(a.welcome);
+    await op(a, { kind: "card.create", id: "card00001", columnId: col, position: "a0", title: "Ship" });
+    await op(a, { kind: "card.update", id: "card00001", patch: { assignees: ["ada", "Bob"] } });
+    await b.next(); // opb: Ada's card
+    await b.next(); // opb: Ada's assignees
+    await op(b, { kind: "card.create", id: "card00002", columnId: col, position: "a1", title: "Other" });
+
+    a.send({ t: "profile", name: "Ada Lovelace", color: "#0d9488" });
+    const seen = await b.until((m) => m.t === "opb" && m.op.op.kind === "member.rename");
+    assert.deepEqual(seen.op.op, { kind: "member.rename", from: "Ada", to: "Ada Lovelace" });
+    assert.equal(seen.op.by, "Ada Lovelace");
+    await a.until((m) => m.t === "opb" && m.op.op.kind === "member.rename");
+
+    // Clients can't send it themselves.
+    b.send({ t: "op", cid: "forged", op: { kind: "member.rename", from: "Ada Lovelace", to: "Bob" } });
+    assert.equal((await b.until((m) => m.cid === "forged")).reason, "Invalid change");
+    a.ws.close();
+    b.ws.close();
+
+    const c = await join(id, "Cy");
+    const cards = c.welcome.sync.board.cards;
+    assert.deepEqual(cards.card00001.assignees, ["Ada Lovelace", "Bob"], "case-insensitive match, order kept");
+    assert.equal(cards.card00001.updatedBy, "Ada Lovelace");
+    assert.equal(cards.card00002.updatedBy, "Bob", "other people's cards are untouched");
+    c.send({ t: "history" });
+    const history = await c.until((m) => m.t === "history");
+    assert.ok(!history.entries.some((e) => e.by === "Ada"), "history shows the current name");
+    assert.equal(history.entries[0].op.kind, "member.rename");
+    c.ws.close();
+  },
+
   async "create endpoint enforces allowed origins"() {
     assert.equal(await rawPost("/api/boards", "https://evil.example"), 403);
     assert.equal(await rawPost("/api/boards", "http://localhost:3000"), 201);

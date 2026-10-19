@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 /** The way into a new board: the create page, where you name it and choose its settings. */
-export function CreateBoardButton({ label = "Create a board", className = "" }: { label?: string; className?: string }) {
+export function CreateBoardButton({ label = "Create a board", size = "large" }: { label?: string; size?: "large" | "small" }) {
   return (
     <Link
       href="/new"
-      className={`inline-flex items-center justify-center rounded-lg bg-teal-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-teal-700 ${className}`}
+      className={`press inline-flex items-center justify-center whitespace-nowrap rounded-full bg-accent-600 font-medium text-white hover:bg-accent-700 ${
+        size === "large" ? "px-6 py-3 text-[17px]" : "px-3.5 py-1 text-xs"
+      }`}
     >
       {label}
     </Link>

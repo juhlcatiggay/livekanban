@@ -7,36 +7,35 @@
  */
 
 .markdown {
-  --md-text: #1c1917;
-  --md-muted: #57534e;
-  --md-faint: #78716c;
-  --md-border: #e7e5e4;
-  --md-strong-border: #d6d3d1;
-  --md-link: #0f766e;
-  --md-code-bg: rgb(120 113 108 / 0.12);
-  --md-pre-bg: #f5f5f4;
-  --md-quote-bar: #14b8a6;
-  --md-row-alt: rgb(120 113 108 / 0.05);
+  --md-text: #1d1d1f;
+  --md-muted: #424245;
+  --md-faint: #6e6e73;
+  --md-border: #e8e8ed;
+  --md-strong-border: #d2d2d7;
+  --md-link: #0066cc;
+  --md-code-bg: rgb(118 118 128 / 0.12);
+  --md-pre-bg: #f5f5f7;
+  --md-quote-bar: #0071e3;
+  --md-row-alt: rgb(118 118 128 / 0.05);
   color: var(--md-text);
   font-size: 0.9375rem;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
 
-@media (prefers-color-scheme: dark) {
-  .markdown:not(.markdown-paper) {
-    --md-text: #e7e5e4;
-    --md-muted: #a8a29e;
-    --md-faint: #a8a29e;
-    --md-border: #292524;
-    --md-strong-border: #44403c;
-    --md-link: #5eead4;
-    --md-code-bg: rgb(168 162 158 / 0.16);
-    --md-pre-bg: #1c1917;
-    --md-quote-bar: #2dd4bf;
-    --md-row-alt: rgb(168 162 158 / 0.06);
-  }
+[data-theme="dark"] .markdown:not(.markdown-paper) {
+  --md-text: #f5f5f7;
+  --md-muted: #c7c7cc;
+  --md-faint: #98989d;
+  --md-border: #2c2c2e;
+  --md-strong-border: #48484a;
+  --md-link: #2997ff;
+  --md-code-bg: rgb(118 118 128 / 0.24);
+  --md-pre-bg: #1c1c1e;
+  --md-quote-bar: #0a84ff;
+  --md-row-alt: rgb(118 118 128 / 0.08);
 }
+
 
 /* Vertical rhythm: space between blocks, none at the edges. :where() keeps specificity low so nested lists can tighten it. */
 .markdown > :first-child {
@@ -150,7 +149,7 @@
   height: 1em;
   margin: 0;
   transform: translateY(0.12em);
-  accent-color: #0d9488;
+  accent-color: #0071e3;
 }
 .markdown .task-list-item .contains-task-list {
   padding-left: 1.5em;
@@ -318,34 +317,33 @@
 .markdown .hljs-strong {
   font-weight: 600;
 }
-@media (prefers-color-scheme: dark) {
-  .markdown:not(.markdown-paper) .hljs-comment,
-  .markdown:not(.markdown-paper) .hljs-quote {
-    color: #8b949e;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag) {
-    color: #ff7b72;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attr-value) {
-    color: #a5d6ff;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-number, .hljs-built_in, .hljs-symbol, .hljs-bullet, .hljs-link) {
-    color: #79c0ff;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-title, .hljs-section, .hljs-function .hljs-title, .hljs-title.function_) {
-    color: #d2a8ff;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property) {
-    color: #ffa657;
-  }
-  .markdown:not(.markdown-paper) :is(.hljs-meta, .hljs-name, .hljs-tag) {
-    color: #7ee787;
-  }
-  .markdown:not(.markdown-paper) .hljs-deletion {
-    color: #ffdcd7;
-    background: #67060c;
-  }
+[data-theme="dark"] .markdown:not(.markdown-paper) .hljs-comment,
+[data-theme="dark"] .markdown:not(.markdown-paper) .hljs-quote {
+  color: #8b949e;
 }
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag) {
+  color: #ff7b72;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attr-value) {
+  color: #a5d6ff;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-number, .hljs-built_in, .hljs-symbol, .hljs-bullet, .hljs-link) {
+  color: #79c0ff;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-title, .hljs-section, .hljs-function .hljs-title, .hljs-title.function_) {
+  color: #d2a8ff;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property) {
+  color: #ffa657;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) :is(.hljs-meta, .hljs-name, .hljs-tag) {
+  color: #7ee787;
+}
+[data-theme="dark"] .markdown:not(.markdown-paper) .hljs-deletion {
+  color: #ffdcd7;
+  background: #67060c;
+}
+
 
 /* #12 mentions of cards and notes. */
 .markdown .md-mention {

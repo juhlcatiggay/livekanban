@@ -3,10 +3,10 @@ import type { Color } from "@livekanban/protocol";
 /** Literal class names so Tailwind can see them. `chip` is a label chip's background, border and text, readable in both themes. */
 export const COLOR_STYLES: Record<Color, { stripe: string; swatch: string; label: string; chip: string }> = {
   gray: {
-    stripe: "bg-stone-400",
-    swatch: "bg-stone-400",
+    stripe: "bg-gray-400",
+    swatch: "bg-gray-400",
     label: "Gray",
-    chip: "bg-stone-100 text-stone-700 border-stone-300 dark:bg-stone-800 dark:text-stone-200 dark:border-stone-600",
+    chip: "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600",
   },
   red: { stripe: "bg-red-500", swatch: "bg-red-500", label: "Red", chip: "bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-800" },
   amber: {
@@ -21,7 +21,7 @@ export const COLOR_STYLES: Record<Color, { stripe: string; swatch: string; label
     label: "Green",
     chip: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
   },
-  teal: { stripe: "bg-teal-500", swatch: "bg-teal-500", label: "Teal", chip: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-200 dark:border-teal-800" },
+  teal: { stripe: "bg-cyan-500", swatch: "bg-cyan-500", label: "Teal", chip: "bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200 dark:border-cyan-800" },
   blue: { stripe: "bg-blue-500", swatch: "bg-blue-500", label: "Blue", chip: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800" },
   purple: {
     stripe: "bg-purple-500",

@@ -8,7 +8,7 @@ import { useCan } from "@/lib/use-can";
 import { closeMenu, useDismiss } from "@/lib/use-dismiss";
 
 const iconButton =
-  "rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-stone-800";
+  "rounded-md px-2 py-1 text-[13px] font-medium text-gray-700 hover:bg-black/5 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10";
 
 /** Undo/redo, export and trash, in the board header. */
 export function BoardActions({ board }: { board: BoardData }) {
@@ -37,7 +37,7 @@ export function BoardActions({ board }: { board: BoardData }) {
 
 function ExportMenu({ board }: { board: BoardData }) {
   const name = slug(board.title);
-  const item = "w-full rounded px-2 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800";
+  const item = "w-full rounded-md px-2.5 py-1.5 text-left hover:bg-accent-600 hover:text-white";
   const menu = useDismiss();
   const save = (filename: string, text: string, type: string) => {
     downloadFile(filename, text, type);
@@ -46,7 +46,7 @@ function ExportMenu({ board }: { board: BoardData }) {
   return (
     <details ref={menu} className="relative">
       <summary className={`${iconButton} cursor-pointer list-none`}>Export</summary>
-      <div className="absolute right-0 z-40 mt-1 w-44 rounded-lg border border-stone-200 bg-white p-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+      <div className="absolute right-0 z-40 mt-1 w-44 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-1 text-sm shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90">
         <button type="button" className={item} onClick={() => save(`${name}.json`, JSON.stringify(toExport(board), null, 2), "application/json")}>
           JSON (re-importable)
         </button>
@@ -103,33 +103,33 @@ function TrashDialog({ board, onClose }: { board: BoardData; onClose: () => void
       onClose={onClose}
       onClick={(e) => e.target === ref.current && ref.current.close()}
       aria-label="Trash"
-      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-xl bg-white p-0 text-stone-900 shadow-2xl backdrop:bg-black/40 dark:bg-stone-900 dark:text-stone-100"
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-[20px] bg-white p-0 text-gray-900 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.45)] dark:bg-gray-900 dark:text-gray-100"
     >
       <div className="flex flex-col gap-4 p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Trash</h2>
-          <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="rounded px-2 text-xl leading-none text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800">
+          <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-base leading-none text-gray-500 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15">
             ×
           </button>
         </div>
-        <p className="-mt-2 text-sm text-stone-500">Deleted columns, cards and notes stay here for 7 days. Anyone with the link can restore them.</p>
+        <p className="-mt-2 text-sm text-gray-500">Deleted columns, cards and notes stay here for 7 days. Anyone with the link can restore them.</p>
 
         {!trash ? (
-          <p className="text-sm text-stone-500">Loading…</p>
+          <p className="text-sm text-gray-500">Loading…</p>
         ) : trash.items.length === 0 ? (
-          <p className="text-sm text-stone-500">The trash is empty.</p>
+          <p className="text-sm text-gray-500">The trash is empty.</p>
         ) : (
-          <ul className="max-h-72 divide-y divide-stone-200 overflow-y-auto rounded-lg border border-stone-200 dark:divide-stone-800 dark:border-stone-800">
+          <ul className="max-h-72 divide-y divide-gray-200 overflow-y-auto rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
             {trash.items.map((item) => (
               <li key={item.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <span className="w-12 shrink-0 text-xs uppercase tracking-wide text-stone-500">{item.kind}</span>
+                <span className="w-12 shrink-0 text-xs uppercase tracking-wide text-gray-500">{item.kind}</span>
                 <span className="min-w-0 flex-1 truncate">
                   {item.label}
-                  {item.kind === "column" && item.cardCount ? <span className="text-stone-500"> · {item.cardCount} cards</span> : null}
+                  {item.kind === "column" && item.cardCount ? <span className="text-gray-500"> · {item.cardCount} cards</span> : null}
                 </span>
-                <span className="shrink-0 text-xs text-stone-500">{ago(item.deletedAt)}</span>
+                <span className="shrink-0 text-xs text-gray-500">{ago(item.deletedAt)}</span>
                 {mayRestore(item) && (
-                  <button type="button" onClick={() => restore(item)} aria-label={`Restore ${item.kind} ${item.label}`} className="shrink-0 rounded px-2 py-0.5 font-medium text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950">
+                  <button type="button" onClick={() => restore(item)} aria-label={`Restore ${item.kind} ${item.label}`} className="shrink-0 rounded px-2 py-0.5 font-medium text-accent-700 hover:bg-accent-50 dark:text-accent-300 dark:hover:bg-accent-950">
                     Restore
                   </button>
                 )}
@@ -141,7 +141,7 @@ function TrashDialog({ board, onClose }: { board: BoardData; onClose: () => void
         {trash && trash.backups.length > 0 && (
           <section>
             <h3 className="text-sm font-semibold">Daily backups</h3>
-            <p className="text-xs text-stone-500">Download a copy of the board as it was, then import it as a new board.</p>
+            <p className="text-xs text-gray-500">Download a copy of the board as it was, then import it as a new board.</p>
             <ul className="mt-2 flex flex-wrap gap-2">
               {trash.backups.map((b) => (
                 <li key={b.day}>
@@ -149,7 +149,7 @@ function TrashDialog({ board, onClose }: { board: BoardData; onClose: () => void
                     type="button"
                     disabled={busyDay !== null}
                     onClick={() => download(b.day)}
-                    className="rounded-md border border-stone-300 px-2 py-1 text-xs hover:bg-stone-100 disabled:opacity-50 dark:border-stone-700 dark:hover:bg-stone-800"
+                    className="rounded-full px-2 py-1 text-xs hover:bg-black/10 disabled:opacity-50 dark:hover:bg-white/15 bg-black/5 dark:bg-white/10"
                   >
                     {busyDay === b.day ? "Preparing…" : b.day}
                   </button>

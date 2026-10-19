@@ -86,25 +86,25 @@ export function BulletinBoard({ board }: { board: BoardData }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-stone-200 px-4 py-2 text-sm dark:border-stone-800">
+      <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-2 text-sm dark:border-gray-800">
         {canEdit ? (
           <>
             <button
               type="button"
               onClick={addNoteInView}
               disabled={full}
-              className="rounded-md bg-amber-400 px-3 py-1 font-medium text-stone-900 hover:bg-amber-300 disabled:opacity-50"
+              className="rounded-md bg-amber-400 px-3 py-1 font-medium text-gray-900 hover:bg-amber-300 disabled:opacity-50"
             >
               + Add note
             </button>
             {layout === "canvas" && (
-              <span className="hidden text-xs text-stone-500 lg:inline">Double-click the canvas to add a note there. Drag notes anywhere.</span>
+              <span className="hidden text-xs text-gray-500 lg:inline">Double-click the canvas to add a note there. Drag notes anywhere.</span>
             )}
           </>
         ) : (
-          <span className="text-xs text-stone-500">The host has made the bulletin board view-only.</span>
+          <span className="text-xs text-gray-500">The host has made the bulletin board view-only.</span>
         )}
-        <div className="ml-auto flex items-center gap-0.5 rounded-lg bg-stone-100 p-0.5 dark:bg-stone-800" role="group" aria-label="Layout">
+        <div className="ml-auto flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" role="group" aria-label="Layout">
           {(
             [
               ["canvas", "Sticky notes"],
@@ -117,7 +117,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
               aria-pressed={layout === value}
               onClick={() => setBulletinLayout(value)}
               className={`rounded-md px-2.5 py-0.5 text-sm ${
-                layout === value ? "bg-white font-semibold shadow-sm dark:bg-stone-700" : "text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+                layout === value ? "bg-white font-semibold shadow-sm dark:bg-gray-700" : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
               }`}
             >
               {label}
@@ -132,7 +132,7 @@ export function BulletinBoard({ board }: { board: BoardData }) {
                 type="button"
                 aria-pressed={zoom === z}
                 onClick={() => setZoom(z)}
-                className={`rounded px-2 py-0.5 tabular-nums ${zoom === z ? "bg-stone-200 font-semibold dark:bg-stone-700" : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"}`}
+                className={`rounded px-2 py-0.5 tabular-nums ${zoom === z ? "bg-gray-200 font-semibold dark:bg-gray-700" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
               >
                 {z * 100}%
               </button>
@@ -155,12 +155,12 @@ export function BulletinBoard({ board }: { board: BoardData }) {
       ) : (
         <div className="relative flex min-h-0 flex-1">
           <Minimap notes={notes} scroller={scroller} zoom={zoom} />
-          <div ref={setScroller} className="relative min-h-0 flex-1 overflow-auto bg-stone-100 dark:bg-stone-900" data-presence-area>
+          <div ref={setScroller} className="relative min-h-0 flex-1 overflow-auto bg-gray-100 dark:bg-gray-900" data-presence-area>
             <div className="relative" style={{ width: CANVAS.width * zoom, height: CANVAS.height * zoom }}>
               <div
                 data-anchor="canvas"
                 aria-label="Bulletin canvas"
-                className="absolute left-0 top-0 origin-top-left bg-white dark:bg-stone-950"
+                className="absolute left-0 top-0 origin-top-left bg-white dark:bg-gray-950"
                 style={{
                   width: CANVAS.width,
                   height: CANVAS.height,

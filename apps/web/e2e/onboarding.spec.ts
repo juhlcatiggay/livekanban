@@ -28,7 +28,7 @@ test("the create page names the board, sets a password and host settings", async
   await host.getByRole("link", { name: "Create a board" }).first().click();
   await host.waitForURL(/\/new$/);
 
-  await host.getByLabel("Name", { exact: true }).fill("Q4 launch");
+  await host.getByLabel("Board name").fill("Q4 launch");
   await host.getByLabel("Require a password to open this board").check();
   const create = host.getByRole("button", { name: "Create board" });
   await host.getByLabel("Password", { exact: true }).fill("abc");

@@ -27,7 +27,7 @@ function Avatar({ peer, label }: { peer: Pick<Peer, "name" | "color" | "idle" | 
     <span className="relative block">
       <span
         title={title}
-        className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white transition-opacity dark:border-stone-950 ${
+        className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white transition-opacity dark:border-gray-950 ${
           status ? "opacity-40" : ""
         }`}
         style={{ backgroundColor: peer.color }}
@@ -35,7 +35,7 @@ function Avatar({ peer, label }: { peer: Pick<Peer, "name" | "color" | "idle" | 
         {initials(peer.name)}
       </span>
       {peer.host && (
-        <span className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded bg-amber-400 px-1 text-[9px] font-bold uppercase leading-tight text-stone-900">
+        <span className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded bg-amber-400 px-1 text-[9px] font-bold uppercase leading-tight text-gray-900">
           Host
         </span>
       )}
@@ -91,10 +91,10 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
 
   return (
     <details ref={menu} className="relative">
-      <summary className="cursor-pointer list-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-teal-500" aria-label="Your name and color">
+      <summary className="cursor-pointer list-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500" aria-label="Your name and color">
         {children}
       </summary>
-      <div className="absolute right-0 z-40 mt-2 w-64 rounded-lg border border-stone-200 bg-white p-3 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+      <div className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-black/10 bg-white/90 backdrop-blur-xl backdrop-saturate-150 p-3 text-sm shadow-[0_12px_40px_-8px_rgb(0_0_0/0.28)] dark:border-white/10 dark:bg-gray-800/90">
         <label className="flex flex-col gap-1 font-medium">
           Your name
           <input
@@ -103,7 +103,7 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
             onChange={(e) => setName(e.target.value)}
             onBlur={saveName}
             onKeyDown={(e) => e.key === "Enter" && saveName()}
-            className="rounded-md border border-stone-300 bg-transparent px-2 py-1 font-normal outline-none focus:border-teal-500 dark:border-stone-700"
+            className="field rounded-md px-2 py-1 font-normal"
           />
         </label>
         <fieldset className="mt-3">
@@ -116,13 +116,13 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
                 aria-label={`Color ${c}`}
                 aria-pressed={me.color === c}
                 onClick={() => setProfile(me.name, c)}
-                className={`h-6 w-6 rounded-full ${me.color === c ? "ring-2 ring-stone-900 ring-offset-2 dark:ring-white dark:ring-offset-stone-900" : ""}`}
+                className={`h-6 w-6 rounded-full ${me.color === c ? "ring-2 ring-gray-900 ring-offset-2 dark:ring-white dark:ring-offset-gray-900" : ""}`}
                 style={{ backgroundColor: c }}
               />
             ))}
           </div>
         </fieldset>
-        <p className="mt-3 text-xs text-stone-500">Each name is used by one person on this board and kept for your next visit. Names aren&apos;t verified.</p>
+        <p className="mt-3 text-xs text-gray-500">Each name is used by one person on this board and kept for your next visit. Names aren&apos;t verified.</p>
       </div>
     </details>
   );

@@ -30,9 +30,9 @@ interface NoteStackProps {
 export function NoteStack({ notes, columns, lastCardPosition, pinnedNoteId, editors, canEdit, justCreated, onEditingDone, onDelete }: NoteStackProps) {
   const ordered = [...notes].sort((a, b) => b.createdAt - a.createdAt || b.number - a.number);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-stone-100 px-4 py-6 dark:bg-stone-900" data-presence-area data-anchor="stack">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-gray-100 px-4 py-6 dark:bg-gray-900" data-presence-area data-anchor="stack">
       {ordered.length === 0 ? (
-        <p className="mt-16 text-center text-sm text-stone-500">No notes yet.</p>
+        <p className="mt-16 text-center text-sm text-gray-500">No notes yet.</p>
       ) : (
         <ol className="mx-auto flex max-w-2xl flex-col gap-4" aria-label="Notes, newest first">
           {ordered.map((note) => (
@@ -88,9 +88,9 @@ function StackNote({
       className={`group relative rounded-lg border shadow-sm ${PAPER[note.color]}`}
       style={editor ? { boxShadow: `0 0 0 3px ${editor.color}` } : undefined}
     >
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-black/10 px-4 py-2 text-xs text-stone-600">
-        {note.number > 0 && <span className="font-semibold tabular-nums text-stone-800">#{note.number}</span>}
-        {pinned && <span className="rounded bg-stone-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Pinned</span>}
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-black/10 px-4 py-2 text-xs text-gray-600">
+        {note.number > 0 && <span className="font-semibold tabular-nums text-gray-800">#{note.number}</span>}
+        {pinned && <span className="rounded bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Pinned</span>}
         <span>
           Created <time dateTime={new Date(note.createdAt).toISOString()}>{when.format(note.createdAt)}</time>
         </span>
@@ -101,7 +101,7 @@ function StackNote({
         )}
         {canEdit && !textEditor.editing && (
           <span className="ml-auto flex items-center gap-1">
-            <button type="button" onClick={textEditor.open} className="rounded px-2 py-0.5 font-medium text-stone-700 hover:bg-black/10">
+            <button type="button" onClick={textEditor.open} className="rounded px-2 py-0.5 font-medium text-gray-700 hover:bg-black/10">
               Edit
             </button>
             {/* The menu positions itself absolutely; give it a relative box in the header. */}
@@ -114,13 +114,13 @@ function StackNote({
       {editor && <EditingBadge peers={editors} />}
       <div className="px-4 py-3">
         {textEditor.editing ? (
-          <MarkdownEditor {...textEditor.editorProps} rows={8} className="w-full resize-y rounded-md border border-black/15 bg-white/60 p-2 text-sm text-stone-900 outline-none focus:border-teal-600" />
+          <MarkdownEditor {...textEditor.editorProps} rows={8} className="w-full resize-y rounded-md border border-black/15 bg-white/60 p-2 text-sm text-gray-900 outline-none focus:border-accent-600" />
         ) : note.text ? (
           <div onDoubleClick={textEditor.open}>
             <Markdown text={note.text} onPaper />
           </div>
         ) : (
-          <p className="text-sm text-stone-500">Empty note</p>
+          <p className="text-sm text-gray-500">Empty note</p>
         )}
       </div>
     </li>

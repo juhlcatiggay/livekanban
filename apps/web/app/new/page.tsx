@@ -1,24 +1,30 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ThemeToggle } from "../theme-toggle";
 import { CreateBoardForm } from "./create-board-form";
 
 export const metadata: Metadata = {
-  title: "Create a board · LiveKanban",
+  title: "New Board · LiveKanban",
   robots: { index: false },
 };
 
 export default function NewBoardPage() {
   return (
-    <div className="flex min-h-dvh flex-col bg-stone-50 dark:bg-stone-950">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
-        <Link href="/" className="text-lg font-bold tracking-tight">
-          LiveKanban
-        </Link>
-        <Link href="/#my-boards" className="text-sm text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white">
-          My boards
-        </Link>
+    <div className="flex min-h-dvh flex-col">
+      <header className="material material-edge sticky top-0 z-30 border-b">
+        <nav className="mx-auto flex h-12 max-w-5xl items-center justify-between px-4 text-sm" aria-label="Main">
+          <Link href="/" className="press font-semibold">
+            ‹ LiveKanban
+          </Link>
+          <span className="flex items-center gap-4">
+            <Link href="/#my-boards" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+              My boards
+            </Link>
+            <ThemeToggle />
+          </span>
+        </nav>
       </header>
-      <main className="flex flex-1 justify-center px-4 pb-16 pt-6">
+      <main className="flex flex-1 items-center justify-center px-4 py-6">
         <CreateBoardForm />
       </main>
     </div>

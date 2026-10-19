@@ -93,6 +93,8 @@ export function describe(c: CommittedOp, board: Pick<BoardData, "cards" | "notes
       return `edited the checklist item ${q(detail.item, "")} on ${card}`;
     case "checklist.delete":
       return `removed ${q(detail.item, "an item")} from the checklist of ${card}`;
+    case "member.rename":
+      return `changed their name from “${op.from}” to “${op.to}”`;
     case "label.color":
       return op.color && (COLORS as readonly string[]).includes(op.color) ? `made the label “${op.label}” ${op.color}` : `reset the color of the label “${op.label}”`;
     case "note.create":

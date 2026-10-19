@@ -151,7 +151,13 @@ export type Op =
   | { kind: "checklist.update"; id: string; itemId: string; patch: ChecklistPatch }
   | { kind: "checklist.delete"; id: string; itemId: string }
   /** Sets the color every card shows for `label` (null goes back to the automatic color). */
-  | { kind: "label.color"; label: string; color: Color | null };
+  | { kind: "label.color"; label: string; color: Color | null }
+  /**
+   * Someone on the board changed their name: every card that names them as an
+   * assignee, and every "last edited by", follows. Made only by the room (names
+   * are unique per board, so `from` is exactly that person); clients can't send it.
+   */
+  | { kind: "member.rename"; from: string; to: string };
 
 export type OpKind = Op["kind"];
 
@@ -264,6 +270,7 @@ export function opTarget(op: Op): string | null {
     case "board.pin":
     case "board.permissions":
     case "label.color":
+    case "member.rename":
       return null;
     default:
       return op.id;
@@ -489,6 +496,9 @@ export function applyOp(board: BoardData, op: Op, meta: { at: number; by: string
       return { ...board, cards: { ...board.cards, [op.id]: { ...card, checklist, updatedAt: meta.at, updatedBy: meta.by } } };
     }
 
+    case "member.rename":
+      return renameMember(board, op.from, op.to);
+
     case "label.color": {
       const labelColors = { ...board.labelColors };
       if (op.color) labelColors[labelKey(op.label)] = op.color;
@@ -539,4 +549,33 @@ export function applyChecklistOp(list: ChecklistItem[], op: ChecklistOp): Checkl
       if (!list.some((i) => i.id === op.itemId)) return null;
       return list.filter((i) => i.id !== op.itemId);
   }
+}
+
+/** Same name, ignoring case: names are unique per board case-insensitively. */
+export const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Assignees with `from` replaced by `to` (once, in place), or null if `from` isn't among them. */
+export function renameAssignee(assignees: string[], from: string, to: string): string[] | null {
+  if (!assignees.some((a) => sameName(a, from))) return null;
+  const out: string[] = [];
+  for (const a of assignees) {
+    const name = sameName(a, from) ? to : a;
+    if (!out.some((o) => sameName(o, name))) out.push(name);
+  }
+  return out;
+}
+
+/** The board after `from` became `to`: assignees and "last edited by" on cards and notes. Edit times don't change. */
+function renameMember(board: BoardData, from: string, to: string): BoardData {
+  const cards: Record<string, Card> = {};
+  for (const [id, card] of Object.entries(board.cards)) {
+    const assignees = renameAssignee(card.assignees, from, to);
+    const by = sameName(card.updatedBy, from);
+    cards[id] = assignees || by ? { ...card, assignees: assignees ?? card.assignees, updatedBy: by ? to : card.updatedBy } : card;
+  }
+  const notes: Record<string, Note> = {};
+  for (const [id, note] of Object.entries(board.notes)) {
+    notes[id] = sameName(note.updatedBy, from) ? { ...note, updatedBy: to } : note;
+  }
+  return { ...board, cards, notes };
 }

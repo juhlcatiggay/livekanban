@@ -8,6 +8,7 @@ import {
   LIMITS,
   applyChecklistOp,
   cardToNoteText,
+  renameAssignee,
   labelKey,
   noteToCardFields,
   positionBetween,
@@ -36,6 +37,8 @@ export const BACKUPS_KEPT = 7;
 const MAX_BACKUP_CHARS = 1_900_000;
 /** ops_log keeps this many recent ops for reconnect replay. */
 export const OPS_KEPT = 2000;
+/** Browsers whose name a board remembers. */
+export const MAX_MEMBERS = 5000;
 
 type Row = Record<string, SqlStorageValue>;
 
@@ -358,7 +361,11 @@ export class BoardStorage {
     const taken = new Set(this.sql.exec<{ name: string }>("SELECT name FROM members").toArray().map((m) => m.name.toLowerCase()));
     const name = wanted.custom && !taken.has(wanted.name.toLowerCase()) ? wanted.name : pickName(taken);
     const color = wanted.custom ? wanted.color : this.leastUsedColor();
-    this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    // Every new browser adds a row; past the cap, names are still unique but no longer remembered,
+    // so nobody can grow a board's database without limit by connecting with fresh client IDs.
+    if (taken.size < MAX_MEMBERS) {
+      this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    }
     return { name, color };
   }
 
@@ -924,6 +931,20 @@ export class BoardStorage {
           actor,
           op.id,
         );
+        return op;
+      }
+
+      case "member.rename": {
+        // Renames are rare and a board has at most 2,000 cards, so check every card with assignees
+        // (a text search on the JSON would miss names with quotes or backslashes in them).
+        for (const row of this.sql.exec<{ id: string; assignees: string }>("SELECT id, assignees FROM cards WHERE assignees != '[]'").toArray()) {
+          const renamed = renameAssignee(JSON.parse(row.assignees) as string[], op.from, op.to);
+          if (renamed) this.sql.exec("UPDATE cards SET assignees = ? WHERE id = ?", JSON.stringify(renamed), row.id);
+        }
+        this.sql.exec("UPDATE cards SET updated_by = ? WHERE lower(updated_by) = lower(?)", op.to, op.from);
+        this.sql.exec("UPDATE notes SET updated_by = ? WHERE lower(updated_by) = lower(?)", op.to, op.from);
+        // History shows people by their current name too.
+        this.sql.exec("UPDATE ops_log SET actor_name = ? WHERE lower(actor_name) = lower(?)", op.to, op.from);
         return op;
       }
 
