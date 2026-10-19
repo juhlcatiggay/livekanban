@@ -10,6 +10,10 @@ const PARTY_HOST = `localhost:${WORKER_PORT}`;
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
+  // Locally every test shares one wrangler process and one Next server, and many tests run two or
+  // three browsers; more than 3 at once overloads a typical dev machine and times tests out.
+  // CI keeps Playwright's default. `--workers` still overrides either.
+  workers: CI ? undefined : 3,
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   reporter: CI ? "github" : "list",
