@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { MAX_NAME_LENGTH, type Peer } from "@livekanban/protocol";
+import { MAX_NAME_LENGTH, PEOPLE_COLORS, type Peer } from "@livekanban/protocol";
 import { useBoard } from "@/lib/board-store";
-import { IDENTITY_COLORS } from "@/lib/identity";
 import { useDismiss } from "@/lib/use-dismiss";
 
 function initials(name: string) {
@@ -76,6 +75,12 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
   const me = useBoard((s) => s.me)!;
   const setProfile = useBoard((s) => s.setProfile);
   const [name, setName] = useState(me.name);
+  // Follow the room's answer: the name it assigned, or the old one after a refused rename.
+  const [shown, setShown] = useState(me.name);
+  if (shown !== me.name) {
+    setShown(me.name);
+    setName(me.name);
+  }
   const menu = useDismiss();
 
   const saveName = () => {
@@ -104,7 +109,7 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
         <fieldset className="mt-3">
           <legend className="mb-1.5 font-medium">Your color</legend>
           <div className="flex flex-wrap gap-2">
-            {IDENTITY_COLORS.map((c) => (
+            {PEOPLE_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"
@@ -117,7 +122,7 @@ function ProfileMenu({ children }: { children: React.ReactNode }) {
             ))}
           </div>
         </fieldset>
-        <p className="mt-3 text-xs text-stone-500">Names are chosen by each visitor and aren&apos;t verified.</p>
+        <p className="mt-3 text-xs text-stone-500">Each name is used by one person on this board and kept for your next visit. Names aren&apos;t verified.</p>
       </div>
     </details>
   );

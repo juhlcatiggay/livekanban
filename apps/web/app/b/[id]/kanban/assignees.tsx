@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { LIMITS } from "@livekanban/protocol";
-import { IDENTITY_COLORS } from "@/lib/identity";
+import { LIMITS, PEOPLE_COLORS } from "@livekanban/protocol";
 
 /** A stable color per name, so the same person looks the same on every card. */
 function colorFor(name: string): string {
   let hash = 0;
   for (const ch of name.toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return IDENTITY_COLORS[hash % IDENTITY_COLORS.length];
+  return PEOPLE_COLORS[hash % PEOPLE_COLORS.length];
 }
 
 const initials = (name: string) =>

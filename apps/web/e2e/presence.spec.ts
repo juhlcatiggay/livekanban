@@ -44,3 +44,38 @@ test("a malformed board id shows the not-found screen", async ({ page }) => {
   await page.goto("/b/not-a-board");
   await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });
+
+test("everyone gets a different name on a board, and keeps it when they come back", async ({ browser }) => {
+  const you = (page: import("@playwright/test").Page) =>
+    page.getByLabel("Your name and color").locator("[title]").first().getAttribute("title");
+  const nameOf = async (page: import("@playwright/test").Page) => (await you(page))!.replace(/ \(you\).*$/, "");
+
+  const ada = await (await browser.newContext()).newPage();
+  await ada.goto("/");
+  await ada.getByRole("button", { name: "Create board" }).click();
+  await ada.waitForURL(/\/b\/[A-Za-z0-9_-]{21}$/);
+  await expect(ada.getByText("Live", { exact: true })).toBeVisible();
+  await expect.poll(() => nameOf(ada)).not.toBe("Guest");
+  const adaName = await nameOf(ada);
+
+  const bob = await (await browser.newContext()).newPage();
+  await bob.goto(ada.url());
+  await expect(bob.getByLabel("2 people on this board")).toBeVisible();
+  await expect.poll(() => nameOf(bob)).not.toBe("Guest");
+  const bobName = await nameOf(bob);
+  expect(bobName.toLowerCase()).not.toBe(adaName.toLowerCase());
+
+  // Same name after closing and reopening the board.
+  await ada.goto("/");
+  await ada.goBack();
+  await expect(ada.getByText("Live", { exact: true })).toBeVisible();
+  await expect.poll(() => nameOf(ada)).toBe(adaName);
+
+  // Someone else's name can't be taken.
+  await bob.getByLabel("Your name and color").click();
+  await bob.getByRole("textbox", { name: "Your name" }).fill(adaName);
+  await bob.getByRole("textbox", { name: "Your name" }).press("Enter");
+  await expect(bob.getByText(`Someone on this board is already called ${adaName}`)).toBeVisible();
+  await expect(bob.getByRole("textbox", { name: "Your name" })).toHaveValue(bobName);
+  await expect.poll(() => nameOf(bob)).toBe(bobName);
+});

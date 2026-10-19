@@ -1,5 +1,7 @@
+import { pickName } from "./names";
 import {
   CONVERTED_NOTE_SIZE,
+  PEOPLE_COLORS,
   DEFAULT_PERMISSIONS,
   parsePermissions,
   LIMITS,
@@ -21,8 +23,8 @@ import {
   type TrashItem,
 } from "@livekanban/protocol";
 
-/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. */
-export const SCHEMA_VERSION = 6;
+/** 2: columns, cards, ops_log. 3: notes. 4: backups. 5: cards.assignees (multiple). 6: item numbers, notes.created_at. 7: members. */
+export const SCHEMA_VERSION = 7;
 /** Daily backups kept (the plan's "7 days of snapshots"). */
 export const BACKUPS_KEPT = 7;
 /** Durable Object SQLite values max out at 2 MB; bigger boards skip the backup rather than fail. */
@@ -194,6 +196,12 @@ export class BoardStorage {
           deleted_at INTEGER
         );
         CREATE TABLE IF NOT EXISTS backups (day TEXT PRIMARY KEY, at INTEGER NOT NULL, board TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS members (
+          client_id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL,
+          joined_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS ops_log (
           seq INTEGER PRIMARY KEY AUTOINCREMENT,
           op TEXT NOT NULL,
@@ -276,6 +284,51 @@ export class BoardStorage {
         this.sql.exec("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)", newId(), title, position);
       }
     });
+  }
+
+  // ---- members: everyone who has opened the board, with the name they have here ----
+
+  /**
+   * The name and color `clientId` has on this board. First-timers get their
+   * own chosen name if nobody here has it, otherwise a free Marvel name; the
+   * color is whichever is least used. Returning members keep what they had.
+   */
+  joinMember(clientId: string, wanted: { name: string; color: string; custom: boolean }, now: number): { name: string; color: string } {
+    const existing = this.sql
+      .exec<{ name: string; color: string }>("SELECT name, color FROM members WHERE client_id = ?", clientId)
+      .toArray()[0];
+    if (existing) return existing;
+    const taken = new Set(this.sql.exec<{ name: string }>("SELECT name FROM members").toArray().map((m) => m.name.toLowerCase()));
+    const name = wanted.custom && !taken.has(wanted.name.toLowerCase()) ? wanted.name : pickName(taken);
+    const color = wanted.custom ? wanted.color : this.leastUsedColor();
+    this.sql.exec("INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?)", clientId, name, color, now);
+    return { name, color };
+  }
+
+  /** Renames a member, refusing a name someone else on this board already has. */
+  renameMember(clientId: string, name: string, color: string): { ok: true } | { ok: false; reason: string } {
+    const clash = this.sql
+      .exec("SELECT 1 FROM members WHERE lower(name) = lower(?) AND client_id != ?", name, clientId)
+      .toArray().length;
+    if (clash) return { ok: false, reason: `Someone on this board is already called ${name}` };
+    this.sql.exec(
+      "INSERT INTO members (client_id, name, color, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(client_id) DO UPDATE SET name = excluded.name, color = excluded.color",
+      clientId,
+      name,
+      color,
+      Date.now(),
+    );
+    return { ok: true };
+  }
+
+  private leastUsedColor(): string {
+    const counts = new Map(PEOPLE_COLORS.map((c) => [c, 0]));
+    for (const m of this.sql.exec<{ color: string }>("SELECT color FROM members")) {
+      if (counts.has(m.color)) counts.set(m.color, counts.get(m.color)! + 1);
+    }
+    const fewest = Math.min(...counts.values());
+    const options = PEOPLE_COLORS.filter((c) => counts.get(c) === fewest);
+    return options[Math.floor(Math.random() * options.length)];
   }
 
   // ---- host and permissions (issue #12) ----

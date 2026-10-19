@@ -18,6 +18,14 @@ import {
 import { roomTimings, type RoomTimings } from "./config";
 import { BoardStorage } from "./storage";
 
+/** Connection state: the public peer plus this browser's client ID, which is never sent to others. */
+type ConnState = Peer & { clientId: string };
+
+/** What others may see of a connection. */
+function publicPeer({ clientId: _, ...peer }: ConnState): Peer {
+  return peer;
+}
+
 /** A drag lock lapses if its holder hasn't moved the pointer for this long. */
 const LOCK_STALE_MS = 15_000;
 /** Ops that a drag lock blocks for everyone but the holder. */
@@ -109,17 +117,17 @@ export class BoardRoom extends Server<Env> {
   }
 
   /** Updates a peer's state and tells everyone, including that peer. */
-  private updatePeer(conn: Connection<Peer>, patch: Partial<Peer>) {
-    const prev = conn.state as Peer;
-    const next: Peer = { ...prev, ...patch };
+  private updatePeer(conn: Connection<ConnState>, patch: Partial<Peer>) {
+    const prev = conn.state as ConnState;
+    const next: ConnState = { ...prev, ...patch };
     if ((Object.keys(patch) as (keyof Peer)[]).every((k) => prev[k] === next[k])) return;
     conn.setState(next);
-    this.broadcast(encode({ t: "peer", peer: next }));
+    this.broadcast(encode({ t: "peer", peer: publicPeer(next) }));
   }
 
   /** The other connection actively holding `cardId`, if any. Stale locks are released. */
-  private holderOf(cardId: string, except: string): Connection<Peer> | undefined {
-    for (const other of this.getConnections<Peer>()) {
+  private holderOf(cardId: string, except: string): Connection<ConnState> | undefined {
+    for (const other of this.getConnections<ConnState>()) {
       if (other.id === except || other.state?.holding !== cardId) continue;
       const moved = this.lastMove.get(other.id);
       if (moved !== undefined && Date.now() - moved < LOCK_STALE_MS) return other;
@@ -253,7 +261,7 @@ export class BoardRoom extends Server<Env> {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  async onConnect(conn: Connection<Peer>) {
+  async onConnect(conn: Connection<ConnState>) {
     if (!this.isInitialized()) {
       this.send(conn, { t: "expired" });
       conn.close(CloseCode.Expired, "Board expired");
@@ -273,7 +281,7 @@ export class BoardRoom extends Server<Env> {
     return { type: "snapshot", seq: this.store.currentSeq(), board: this.store.snapshot() };
   }
 
-  onMessage(conn: Connection<Peer>, raw: string | ArrayBuffer | ArrayBufferView) {
+  onMessage(conn: Connection<ConnState>, raw: string | ArrayBuffer | ArrayBufferView) {
     if (typeof raw !== "string" || raw.length > MAX_MESSAGE_LENGTH) return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
@@ -301,22 +309,25 @@ export class BoardRoom extends Server<Env> {
     switch (msg.t) {
       case "hello": {
         if (conn.state) return;
-        const peer: Peer = {
+        // Names are per board and unique on it: the room decides, and remembers it for next time.
+        const { name, color } = this.store.joinMember(msg.clientId, msg, Date.now());
+        const state: ConnState = {
           connectionId: conn.id,
           clientId: msg.clientId,
-          name: msg.name,
-          color: msg.color,
+          name,
+          color,
           editing: null,
           holding: null,
           idle: false,
           away: false,
           host: this.store.isHostKey(msg.hostKey),
         };
-        conn.setState(peer);
+        conn.setState(state);
+        const peer = publicPeer(state);
         this.touch();
         const peers: Peer[] = [];
-        for (const other of this.getConnections<Peer>()) {
-          if (other.id !== conn.id && other.state) peers.push(other.state as Peer);
+        for (const other of this.getConnections<ConnState>()) {
+          if (other.id !== conn.id && other.state) peers.push(publicPeer(other.state as ConnState));
         }
         this.send(conn, {
           t: "welcome",
@@ -378,9 +389,16 @@ export class BoardRoom extends Server<Env> {
         if (conn.state) this.updatePeer(conn, msg.patch);
         return;
 
-      case "profile":
-        if (conn.state) this.updatePeer(conn, { name: msg.name, color: msg.color });
+      case "profile": {
+        if (!conn.state) return;
+        const renamed = this.store.renameMember(conn.state.clientId, msg.name, msg.color);
+        if (!renamed.ok) return this.send(conn, { t: "profileRejected", reason: renamed.reason });
+        // Every tab of this browser on the board shows the new name.
+        for (const other of this.getConnections<ConnState>()) {
+          if (other.state?.clientId === conn.state.clientId) this.updatePeer(other, { name: msg.name, color: msg.color });
+        }
         return;
+      }
 
       case "lock": {
         if (!conn.state) return;
@@ -402,7 +420,7 @@ export class BoardRoom extends Server<Env> {
     }
   }
 
-  onClose(conn: Connection<Peer>) {
+  onClose(conn: Connection<ConnState>) {
     this.lastMove.delete(conn.id);
     this.buckets.delete(conn.id);
     this.cursorBatch.delete(conn.id);

@@ -3,7 +3,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 async function visitor(browser: Browser, name: string, viewport = { width: 1400, height: 900 }) {
   const context = await browser.newContext({ viewport });
   await context.addInitScript(
-    ([n]) => localStorage.setItem("lk:identity", JSON.stringify({ clientId: `test-${n}`, name: n, color: "#4f46e5" })),
+    ([n]) => localStorage.setItem("lk:identity", JSON.stringify({ clientId: `test-${n}`, name: n, color: "#4f46e5", custom: true })),
     [name],
   );
   return context.newPage();

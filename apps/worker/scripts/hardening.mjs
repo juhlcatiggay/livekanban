@@ -56,7 +56,7 @@ function client(ws, boardId) {
 async function join(ws, boardId, name = "Tester") {
   const c = client(ws, boardId);
   await c.opened;
-  c.send({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", lastSeq: 0 });
+  c.send({ t: "hello", clientId: `c-${name}`, name, color: "#0d9488", custom: true, lastSeq: 0 });
   const welcome = await c.until((m) => m.t === "welcome");
   return Object.assign(c, { welcome });
 }
