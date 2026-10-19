@@ -290,9 +290,9 @@ dialog[open]::backdrop {
   }
 }
 
-/* In-page links glide to their section instead of jumping. */
+/* In-page links glide to their section instead of jumping (on pages that ask for it, like the landing page). */
 @media (prefers-reduced-motion: no-preference) {
-  html {
+  html:has(.lk-smooth-scroll) {
     scroll-behavior: smooth;
   }
 }

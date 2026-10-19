@@ -21,7 +21,7 @@ const STEPS = [
 
 export default function Home() {
   return (
-    <div className="flex min-h-dvh flex-col bg-white dark:bg-black">
+    <div className="lk-smooth-scroll flex min-h-dvh flex-col bg-white dark:bg-black">
       <header className="material material-edge sticky top-0 z-30 border-b">
         <nav className="mx-auto flex h-12 max-w-[980px] items-center justify-between px-4 text-xs" aria-label="Main">
           <Link href="/" className="press text-[15px] font-semibold">
