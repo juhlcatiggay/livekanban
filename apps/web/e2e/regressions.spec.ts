@@ -82,3 +82,34 @@ test("#6 sticky notes render Markdown", async ({ page }) => {
   const [popup] = await Promise.all([page.waitForEvent("popup"), note.getByRole("link").click()]);
   expect(popup.url()).toContain("example.com");
 });
+
+test("#7 the bulletin minimap shows notes and moves the view", async ({ page }) => {
+  await createBoard(page);
+  await page.getByRole("tab", { name: /^Bulletin/ }).click();
+  await page.getByRole("button", { name: "+ Add note" }).click();
+  await page.getByLabel("Note text").fill("Mapped");
+  await page.getByLabel("Note text").press("Escape");
+
+  const map = page.getByRole("button", { name: /^Bulletin minimap/ });
+  await expect(map.locator("span:not([data-minimap-view])")).toHaveCount(1);
+
+  // Clicking the bottom-right of the map scrolls the canvas there and moves the frame.
+  const scroller = page.locator("[data-presence-area]");
+  const frame = map.locator("[data-minimap-view]");
+  const before = (await frame.boundingBox())!;
+  const box = (await map.boundingBox())!;
+  await page.mouse.click(box.x + box.width - 4, box.y + box.height - 4);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(1000);
+  await expect.poll(async () => (await frame.boundingBox())!.x).toBeGreaterThan(before.x + 50);
+
+  // Arrow keys pan from the map too.
+  const top = await scroller.evaluate((el) => el.scrollTop);
+  await map.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeLessThan(top);
+
+  await page.getByRole("button", { name: "Hide" }).click();
+  await expect(map).toHaveCount(0);
+  await page.getByRole("button", { name: "Show map" }).click();
+  await expect(page.getByRole("button", { name: /^Bulletin minimap/ })).toBeVisible();
+});
