@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --var CREATE_LIMIT_PER_HOUR:1000",
     "deploy": "wrangler deploy",
     "typegen": "wrangler types",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/smoke.mjs",
-    "latency": "node scripts/latency.mjs"
+    "latency": "node scripts/latency.mjs",
+    "test:hardening": "node scripts/hardening.mjs",
+    "admin:delete": "node scripts/admin-delete.mjs"
   },
   "dependencies": {
     "@livekanban/protocol": "workspace:*",
